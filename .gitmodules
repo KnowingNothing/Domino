@@ -1,0 +1,9 @@
+[submodule "3rdparty/fmt"]
+	path = 3rdparty/fmt
+	url = git@github.com:fmtlib/fmt.git
+[submodule "3rdparty/pybind11"]
+	path = 3rdparty/pybind11
+	url = git@github.com:pybind/pybind11.git
+[submodule "3rdparty/googletest"]
+	path = 3rdparty/googletest
+	url = git@github.com:google/googletest.git
