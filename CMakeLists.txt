@@ -9,6 +9,7 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/3rdparty/fmt)
 add_subdirectory(${CMAKE_SOURCE_DIR}/3rdparty/googletest)
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_SOURCE_DIR}/3rdparty/range-v3/include)
 
 file(GLOB_RECURSE ALL_CXX_SRC_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
 file(GLOB_RECURSE ALL_CXX_TEST_FILES ${CMAKE_SOURCE_DIR}/test/cpp/*.cc)

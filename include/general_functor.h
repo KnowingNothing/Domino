@@ -1,14 +1,13 @@
-#ifndef DOMINO_GENERAL_VISITOR_H
-#define DOMINO_GENERAL_VISITOR_H
+#ifndef DOMINO_GENERAL_FUNCTOR_H
+#define DOMINO_GENERAL_FUNCTOR_H
 
 #include <ref.h>
 
 #include <functional>
-#include <iostream>
-#include <map>
 #include <tuple>
 #include <type_traits>
 #include <typeindex>
+#include <unordered_map>
 
 namespace domino {
 
@@ -24,7 +23,7 @@ class default_vtable {
   inline Func Get(BasePtr base) { return data_[std::type_index(typeid(*base))]; }
 
  private:
-  std::map<std::type_index, Func> data_;
+  std::unordered_map<std::type_index, Func> data_;
 };
 
 template <typename Base>
@@ -42,25 +41,26 @@ class default_pointer {
 template <typename Visitor, typename Base, typename Deriveds, typename Func,
           typename = detail::default_pointer<Base>,
           template <typename, typename> typename = detail::default_vtable>
-class GeneralVisitor;
+class GeneralFunctor;
 
 template <typename Visitor, typename Base, typename... Deriveds, typename Pointer,
           template <typename, typename> typename Vtable, typename R, typename... Args>
-class GeneralVisitor<Visitor, Base, std::tuple<void, Deriveds...>, R(Args...), Pointer, Vtable> {
+class GeneralFunctor<Visitor, Base, std::tuple<void, Deriveds...>, R(Args...), Pointer, Vtable> {
   using BasePtr = typename Pointer::type;
   using VtableType = Vtable<BasePtr, R (*)(Visitor*, BasePtr, Args...)>;
 
  public:
-  R Visit(BasePtr base, Args... args) {
+  R Visit(BasePtr base, Args&&... args) {
     static VtableType vtable = BuildVtable();
 
     return vtable.Get(base)(static_cast<Visitor*>(this), base, std::forward<Args>(args)...);
   }
+  R operator()(BasePtr base, Args&&... args) { return Visit(base, std::forward<Args>(args)...); }
 
  private:
   template <typename Derived, typename... Rest>
   static void Register(VtableType& vtable) {
-    vtable.template Set<Derived>([](Visitor* visitor, BasePtr base, Args... args) -> R {
+    vtable.template Set<Derived>([](Visitor* visitor, BasePtr base, Args&&... args) -> R {
       return visitor->ImplVisit(Pointer::template cast<Derived>(base), std::forward<Args>(args)...);
     });
     if constexpr (sizeof...(Rest) > 0) {
@@ -75,12 +75,12 @@ class GeneralVisitor<Visitor, Base, std::tuple<void, Deriveds...>, R(Args...), P
   }
 };
 
-template <typename... Visitors>
-class MultiVisitors : public Visitors... {
+template <typename... Functors>
+class MultiFunctors : public Functors... {
  public:
-  using Visitors::Visit...;
+  using Functors::Visit...;
 };
 
 };  // namespace domino
 
-#endif  // DOMINO_GENERAL_VISITOR_H
+#endif  // DOMINO_GENERAL_FUNCTOR_H

@@ -1,8 +1,7 @@
 #ifndef DOMINO_EXPR_H
 #define DOMINO_EXPR_H
 
-#include <fmt/ostream.h>
-#include <general_visitor.h>
+#include <ir_base.h>
 #include <ref.h>
 
 #include <iostream>
@@ -16,14 +15,11 @@ namespace domino {
   class X##Node;       \
   using X = Ref<X##Node>;
 #include <x_macro/expr.x.h>
-#undef X_DECL_EXPR
-#undef X_DECL_EXPR_FINAL
 
-class ExprNode {
+class ExprNode : public IRBaseNode {
  public:
-  virtual ~ExprNode() = default;
+  virtual bool IsConst() const { return false; }
 };
-// using Expr = Ref<ExprNode>;
 
 struct BinOpNode : public ExprNode {
  public:
@@ -33,7 +29,6 @@ struct BinOpNode : public ExprNode {
   BinOpNode(std::string opt, Expr lhs, Expr rhs)
       : opt(std::move(opt)), lhs(std::move(lhs)), rhs(std::move(rhs)) {}
 };
-// using BinOp = Ref<BinOpNode>;
 
 class UnOpNode : public ExprNode {
  public:
@@ -42,68 +37,74 @@ class UnOpNode : public ExprNode {
 
   UnOpNode(std::string opt, Expr opr) : opt(std::move(opt)), opr(std::move(opr)) {}
 };
-// using UnOp = Ref<UnOpNode>;
 
 class CallNode : public ExprNode {
  public:
-  std::string opt;
-  std::vector<Expr> oprs;
+  std::string func;
+  std::vector<Expr> args;
 
-  CallNode(std::string opt, const std::vector<Expr> oprs) : opt(std::move(opt)), oprs(oprs) {}
+  CallNode(std::string func, std::vector<Expr> args)
+      : func(std::move(func)), args(std::move(args)) {}
 };
-// using Call = Ref<CallNode>;
 
 class IfExprNode : public ExprNode {
  public:
   Expr cond, then_case, else_case;
 
   IfExprNode(Expr cond, Expr then_case, Expr else_case)
-      : cond(cond), then_case(then_case), else_case(else_case) {}
+      : cond(std::move(cond)), then_case(std::move(then_case)), else_case(std::move(else_case)) {}
 };
-// using IfExpr = Ref<IfExprNode>;
 
-class IntImmNode : public ExprNode {
+class LoadNode : public ExprNode {
+ public:
+  std::string id;
+  std::vector<Expr> indices;
+
+  LoadNode(std::string id, std::vector<Expr> indices)
+      : id(std::move(id)), indices(std::move(indices)) {}
+};
+
+class SliceIndex {
+ public:
+  Expr beg, end, step;
+
+  SliceIndex(Expr beg, Expr end, Expr step)
+      : beg(std::move(beg)), end(std::move(end)), step(std::move(step)) {}
+};
+
+class SliceNode : public ExprNode {
+ public:
+  std::string id;
+  std::vector<SliceIndex> indices;
+
+  SliceNode(std::string id, std::vector<SliceIndex> indices)
+      : id(std::move(id)), indices(std::move(indices)) {}
+};
+
+class ConstNode : public ExprNode {
+ public:
+  bool IsConst() const override { return true; }
+};
+
+class IntConstNode : public ConstNode {
  public:
   int64_t val;
 
-  IntImmNode(int64_t val) : val(val) {}
+  IntConstNode(int64_t val) : val(val) {}
 };
-// using IntImm = Ref<IntImmNode>;
 
-class FloatImmNode : public ExprNode {
+class FloatConstNode : public ConstNode {
  public:
   double val;
 
-  FloatImmNode(double val) : val(val) {}
+  FloatConstNode(double val) : val(val) {}
 };
-// using FloatImm = Ref<FloatImmNode>;
 
 class VarNode : public ExprNode {
  public:
   std::string id;
 
   VarNode(std::string id) : id(std::move(id)) {}
-};
-// using Var = Ref<VarNode>;
-
-#define X_DECL_EXPR_FINAL(X) , X##Node
-using FinalExprTypes = std::tuple<void
-#include <x_macro/expr.x.h>
-                                  >;
-#undef X_DECL_EXPR
-#undef X_DECL_EXPR_FINAL
-
-template <typename F>
-class ExprFunctor;
-template <typename R, typename... Args>
-class ExprFunctor<R(Args...)>
-    : public GeneralVisitor<ExprFunctor<R(Args...)>, ExprNode, FinalExprTypes, R(Args...)> {
- public:
-#define X_DECL_EXPR_FINAL(X) \
-  virtual R ImplVisit(X, Args...) { throw std::runtime_error("not implemented"); }
-#include <x_macro/expr.x.h>
-#undef X_DECL_EXPR
-#undef X_DECL_EXPR_FINAL
 };
 
 }  // namespace domino
