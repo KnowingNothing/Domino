@@ -64,20 +64,19 @@ class LoadNode : public ExprNode {
       : id(std::move(id)), indices(std::move(indices)) {}
 };
 
-class SliceIndex {
+class RangeNode : public ExprNode {
  public:
-  Expr beg, end, step;
+  Expr beg, extent, step;
 
-  SliceIndex(Expr beg, Expr end, Expr step)
-      : beg(std::move(beg)), end(std::move(end)), step(std::move(step)) {}
+  RangeNode(Expr beg, Expr extent, Expr step) : beg(beg), extent(extent), step(step) {}
 };
 
 class SliceNode : public ExprNode {
  public:
   std::string id;
-  std::vector<SliceIndex> indices;
+  std::vector<Range> indices;
 
-  SliceNode(std::string id, std::vector<SliceIndex> indices)
+  SliceNode(std::string id, std::vector<Range> indices)
       : id(std::move(id)), indices(std::move(indices)) {}
 };
 
@@ -107,19 +106,12 @@ class VarNode : public ExprNode {
   VarNode(std::string id) : id(std::move(id)) {}
 };
 
-class RangeNode : public ExprNode {
-  public:
-    Expr beg, extent, step;
-
-    RangeNode(Expr beg, Expr extent, Expr step) : beg(beg), extent(extent), step(step) {}
-};
-
 class IteratorNode : public ExprNode {
-  public:
-    Var var;
-    Range range;
+ public:
+  Var var;
+  Range range;
 
-    IteratorNode(Var var, Range range) : var(var), range(range) {}
+  IteratorNode(Var var, Range range) : var(var), range(range) {}
 };
 
 }  // namespace domino

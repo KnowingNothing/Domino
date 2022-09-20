@@ -6,5 +6,6 @@ X_DECL_IR(IRBase)
 
 #include <x_macro/expr.x.h>
 #include <x_macro/stmt.x.h>
+#include <x_macro/block.x.h>
 
 #undef X_DECL_IR

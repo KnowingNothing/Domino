@@ -3,6 +3,7 @@
 
 #include <expr.h>
 #include <stmt.h>
+#include <block.h>
 #include <general_functor.h>
 #include <ir_base.h>
 #include <ref.h>
