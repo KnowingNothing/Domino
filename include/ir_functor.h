@@ -1,16 +1,19 @@
 #ifndef DOMINO_IR_FUNCTOR_H
 #define DOMINO_IR_FUNCTOR_H
 
-#include <expr.h>
-#include <stmt.h>
+#include <arch.h>
 #include <block.h>
+#include <expr.h>
 #include <general_functor.h>
 #include <ir_base.h>
 #include <ref.h>
+#include <stmt.h>
 
 #include <tuple>
 
 namespace domino {
+
+using namespace domino::arch;
 
 template <typename F>
 class IRFunctor;
