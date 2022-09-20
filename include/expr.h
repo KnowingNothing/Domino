@@ -107,6 +107,21 @@ class VarNode : public ExprNode {
   VarNode(std::string id) : id(std::move(id)) {}
 };
 
+class RangeNode : public ExprNode {
+  public:
+    Expr beg, extent, step;
+
+    RangeNode(Expr beg, Expr extent, Expr step) : beg(beg), extent(extent), step(step) {}
+};
+
+class IteratorNode : public ExprNode {
+  public:
+    Var var;
+    Range range;
+
+    IteratorNode(Var var, Range range) : var(var), range(range) {}
+};
+
 }  // namespace domino
 
 #endif

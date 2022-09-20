@@ -13,5 +13,7 @@ X_DECL_EXPR(Const)
 X_DECL_EXPR(IntConst)
 X_DECL_EXPR(FloatConst)
 X_DECL_EXPR(Var)
+X_DECL_EXPR(Range)
+X_DECL_EXPR(Iterator)
 
 #undef X_DECL_EXPR
