@@ -1,3 +1,6 @@
+#ifndef DOMINO_STMT_H
+#define DOMINO_STMT_H
+
 #include <ir_base.h>
 #include <ref.h>
 
@@ -11,3 +14,5 @@ namespace domino {
 class StmtNode : public IRBaseNode {};
 
 }  // namespace domino
+
+#endif  // DOMINO_STMT_H
