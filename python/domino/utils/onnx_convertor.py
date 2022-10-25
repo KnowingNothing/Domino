@@ -1,5 +1,6 @@
 from math import prod
 import onnx
+import numpy as np
 from onnx.numpy_helper import to_array
 from domino.graph_ir import ConstTensor, Tensor, Attribute, NamedOp, OpName, SubGraph, Graph
 from domino.program_ir import ConstInt, ConstUInt, ConstFloat, ExprList
@@ -79,7 +80,6 @@ class ConvConvertor(ONNXOpConvertor):
 
         N, C, H, W = data.shape
         K, _C, R, S = filter.shape
-        assert C == _C
 
         op_attrs = {}
 
@@ -166,6 +166,7 @@ class ConvConvertor(ONNXOpConvertor):
             else:
                 raise NotImplementedError("Grouped Conv is not supported yet.")
         else:
+            assert C == _C
             conv_op = NamedOp(
                 OpName.ConvOp.Conv2d,
                 inputs_dict,
@@ -475,6 +476,106 @@ class GemmConvertor(ONNXOpConvertor):
         )
 
         return gemm_op.outputs
+    
+    
+class ConstantConvertor(ONNXOpConvertor):
+    def convert_v9(self, ctx, op, inputs, attrs):
+        if "value" not in attrs:
+            raise ValueError("Requires value attr in Constant")
+        value = attrs["value"]
+        if isinstance(value, bytes):
+            np_value = np.asarray([0]).astype("int64")
+        else:
+            np_value = ctx.parse_data(value)
+        dtype = str(np_value.dtype)
+        output = ConstTensor(
+            [],
+            dtype,
+            np_value,
+            layout=None,
+            name=op.output[0],
+            tensor_idx=op.output[0]
+        )
+        return {"": output}
+    
+    
+class ClipConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        assert len(inputs) == 1
+        data = inputs[0]
+        
+        minv = attrs.get("min", -float("inf"))
+        maxv = attrs.get("max", float("inf"))
+        
+        op_attrs = {
+            "min": Attribute(ConstFloat(minv)),
+            "max": Attribute(ConstFloat(maxv))
+        }
+        
+        assert len(op.output) == 1
+        output_name = op.output[0]
+        output = Tensor(
+            data.shape,
+            data.dtype,
+            layout=data.layout,
+            name=output_name,
+            tensor_idx=output_name
+        )
+        
+        clip_op = NamedOp(
+            OpName.ActivationOp.Clip,
+            {
+                "inputs": data
+            },
+            {
+                "output": output
+            },
+            attrs=op_attrs
+        )
+        
+        return clip_op.outputs
+    
+    def convert_v11(self, ctx, op, inputs, attrs):
+        op_attrs = {}
+        assert 1 <= len(inputs) <= 3
+        data = inputs[0]
+        if len(inputs) == 3 and isinstance(inputs[2], ConstTensor):
+            op_attrs["max"] = Attribute(ConstFloat(float(inputs[2].value)))
+            inputs = inputs[0:2]
+        if len(inputs) >= 2 and isinstance(inputs[1], ConstTensor):
+            op_attrs["min"] = Attribute(ConstFloat(float(inputs[1].value)))
+            inputs = inputs[0:1]
+        if "min" in attrs and "max" in attrs:
+            minv = attrs.get("min", -float("inf"))
+            maxv = attrs.get("max", float("inf"))
+            
+            op_attrs = {
+                "min": Attribute(ConstFloat(minv)),
+                "max": Attribute(ConstFloat(maxv))
+            }
+        
+        assert len(op.output) == 1
+        output_name = op.output[0]
+        output = Tensor(
+            data.shape,
+            data.dtype,
+            layout=data.layout,
+            name=output_name,
+            tensor_idx=output_name
+        )
+        
+        clip_op = NamedOp(
+            OpName.ActivationOp.Clip,
+            {
+                "inputs": data
+            },
+            {
+                "output": output
+            },
+            attrs=op_attrs
+        )
+        
+        return clip_op.outputs
 
 
 CONVERT_MAP = {
@@ -486,6 +587,8 @@ CONVERT_MAP = {
     "GlobalAveragePool": GlobalAveragePoolConvertor,
     "Flatten": FlattenConvertor,
     "Gemm": GemmConvertor,
+    "Constant": ConstantConvertor,
+    "Clip": ClipConvertor
 }
 
 
@@ -530,13 +633,18 @@ class ONNXConvertor(object):
         self._parse_weights(graph, opset)
         self._parse_inputs(graph, opset)
 
+        fully_parsed = True
         for node in graph.node:
             op_name = node.op_type
             if op_name not in CONVERT_MAP:
                 print(f"{op_name} is not supported yet.")
+                fully_parsed = False
                 break
             convertor = CONVERT_MAP[op_name](opset)
             convertor.convert(self, node)
+
+        if not fully_parsed:
+            raise RuntimeError("Parser aborts!")
 
         outputs = {}
         for info in graph.output:
@@ -553,7 +661,7 @@ class ONNXConvertor(object):
         subgraph = SubGraph(inputs, outputs)
         return Graph(subgraph)
 
-    def _parse_data(self, tensor_proto):
+    def parse_data(self, tensor_proto):
         np_array = to_array(tensor_proto)
         np_array = np_array.reshape(tuple(tensor_proto.dims))
         return np_array
@@ -582,7 +690,7 @@ class ONNXConvertor(object):
                 raise ValueError("Tensor's name is required in ONNX model.")
             weight_name = weight.name.strip()
 
-            data = self._parse_data(weight)
+            data = self.parse_data(weight)
             if self.inference:
                 weight_ir = ConstTensor(
                     data.shape,
@@ -641,7 +749,7 @@ class ONNXConvertor(object):
 
 
 if __name__ == "__main__":
-    path = "raw_resnet18.onnx"
+    path = "raw_mobilenetv2.onnx"
     convertor = ONNXConvertor(path, inference=True)
     graph = convertor.parse()
     print(graph)

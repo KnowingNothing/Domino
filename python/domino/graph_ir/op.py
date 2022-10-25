@@ -29,6 +29,7 @@ class OpName(object):
     
     class ActivationOp(enum.Enum):
         ReLU = "ReLU"
+        Clip = "Clip"
 
     class PoolingOp(enum.Enum):
         AveragePool1d = "AveragePool1d"
