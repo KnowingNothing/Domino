@@ -17,7 +17,7 @@ class Tensor(IRBase):
             layout: Optional[str] = None,
             name: str = "tensor",
             quant_params: Optional[TensorQuantParam] = None,
-            tensor_idx: int = 0):
+            tensor_idx: Union[int, str] = 0):
         super(Tensor, self).__init__()
         self.ttype: TType = TType(dtype, shape)
         self.produce_op: Optional[OpBase] = produce_op
@@ -25,7 +25,7 @@ class Tensor(IRBase):
         self.layout_str: Optional[str] = layout
         self.name: str = name
         self.quant_params: Optional[TensorQuantParam] = quant_params
-        self.tensor_idx: int = tensor_idx
+        self.tensor_idx: Union[int, str] = tensor_idx
 
     @property
     def shape(self) -> ShapeType:
@@ -59,7 +59,7 @@ class ConstTensor(Tensor):
             layout: Optional[str] = None,
             name: str = "tensor",
             quant_params: Optional[TensorQuantParam] = None,
-            tensor_idx: int = 0):
+            tensor_idx: Union[int, str] = 0):
         super(ConstTensor, self).__init__(
             shape, dtype, None, "", layout, name, quant_params, tensor_idx)
         self._value = value

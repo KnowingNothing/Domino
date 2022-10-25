@@ -19,20 +19,35 @@ class OpName(object):
 
     class MatrixOp(enum.Enum):
         FullyConnected = "FullyConnected"
+        Gemm = "Gemm"
 
     class PadOp(enum.Enum):
         Pad = "Pad"
 
     class ElementwiseOp(enum.Enum):
         Add = "ElemAdd"
+    
+    class ActivationOp(enum.Enum):
+        ReLU = "ReLU"
 
     class PoolingOp(enum.Enum):
+        AveragePool1d = "AveragePool1d"
         AveragePool2d = "AveragePool2d"
+        AveragePool3d = "AveragePool3d"
+        AveragePool = "AveragePool"
+        MaxPool1d = "MaxPool1d"
         MaxPool2d = "MaxPool2d"
+        MaxPool3d = "MaxPool3d"
+        MaxPool = "MaxPool"
+        GlobalAveragePool1d = "GlobalAveragePool1d"
+        GlobalAveragePool2d = "GlobalAveragePool2d"
+        GlobalAveragePool3d = "GlobalAveragePool3d"
+        GlobalAveragePool = "GlobalAveragePool"
 
     class ScalingOp(enum.Enum):
         ResizeNearestNeighbor = "ResizeNearestNeighbor"
         Reshape = "Reshape"
+        Flatten = "Flatten"
 
     class ReduceOp(enum.Enum):
         Mean = "Mean"
@@ -77,3 +92,8 @@ class NamedOp(OpBase):
         for k in self.outputs.keys():
             self.outputs[k].produce_op = self
             self.outputs[k].out_idx = k
+            
+        # check attrs
+        if attrs is not None:
+            for k, v in attrs.items():
+                assert isinstance(v, Attribute)

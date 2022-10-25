@@ -1,4 +1,4 @@
 from .scalar_expr import (
-    ConstInt, ConstFloat, ExprList, ConstString,
+    ConstInt, ConstUInt, ConstFloat, ExprList, ConstString,
     make_const
 )

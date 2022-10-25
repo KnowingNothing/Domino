@@ -450,7 +450,8 @@ class Conv2dConvertor(TfliteOpConvertor):
         attrs = {
             "strides": Attribute(ExprList([ConstInt(stride_h), ConstInt(stride_w)])),
             "dilation": Attribute(ExprList([ConstInt(dilation_h), ConstInt(dilation_w)])),
-            "padding": Attribute(padding_values)
+            "padding": Attribute(padding_values),
+            "use_bias": Attribute(ConstInt(int(bias_tensor_ir is not None)))
         }
 
         output_quant_scale = output_tensor.qnn_params.scale.value
@@ -597,13 +598,13 @@ class DepthwiseConv2dConvertor(TfliteOpConvertor):
                     "No support for other layout of weight except for 'KRSC'")
         else:
             weight_tensor_type = _decode_type(weight_tensor.tensor.Type())
-            # TFlite Depthwise Conv2d weight layout: [1, R, S, C*mult]
-            # We need [mult, R, S, C]
+            # TFlite Depthwise Conv2d weight layout: [1, R, S, K*mult]
+            # We need [mult, R, S, K]
             weight_value = weight_tensor.value.reshape(
                 [R, S, C, depth_multiplier]).transpose((3, 0, 1, 2))
             weight_tensor_ir = ConstTensor(
                 weight_tensor.shape, weight_tensor.dtype, weight_value,
-                layout="KRSC", name=weight_tensor_name, tensor_idx=weight_tensor.tensor_idx)
+                layout="MRSK", name=weight_tensor_name, tensor_idx=weight_tensor.tensor_idx)
 
         if padding == Padding.VALID:
             padding_values = ExprList([ConstInt(0), ConstInt(0)])
@@ -630,7 +631,8 @@ class DepthwiseConv2dConvertor(TfliteOpConvertor):
         attrs = {
             "strides": Attribute(ExprList([ConstInt(stride_h), ConstInt(stride_w)])),
             "dilation": Attribute(ExprList([ConstInt(dilation_h), ConstInt(dilation_w)])),
-            "padding": Attribute(padding_values)
+            "padding": Attribute(padding_values),
+            "use_bias": Attribute(ConstInt(int(bias_tensor_ir is not None)))
         }
 
         output_quant_scale = output_tensor.qnn_params.scale.value
@@ -900,9 +902,10 @@ class ConvertContext(object):
             self.tensor_ctx[name] = tensor
 
     def make_graph(self):
+        inputs_dict = {k: self.get_tensor(k) for k in self.model_input_names}
         outputs_dict = {k: self.get_tensor(k) for k in self.model_output_names}
-        subgraph = SubGraph(outputs_dict)
-        return Graph([subgraph])
+        subgraph = SubGraph(inputs_dict, outputs_dict)
+        return Graph(subgraph)
 
 
 class TfliteConvertor(object):

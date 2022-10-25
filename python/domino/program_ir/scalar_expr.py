@@ -339,6 +339,10 @@ class ExprList(ExprBase):
     def __init__(self, args: List[ExprBase]):
         super(ExprList, self).__init__(_dtype("ignore"))
         self.value_list = args
+        
+    def __getitem__(self, idx):
+        assert idx < len(self.value_list), "Index out of range."
+        return self.value_list[idx]
 
     def __str__(self):
         return "[" + ",".join([str(x) for x in self.value_list]) + "]"
