@@ -476,8 +476,8 @@ class GemmConvertor(ONNXOpConvertor):
         )
 
         return gemm_op.outputs
-    
-    
+
+
 class ConstantConvertor(ONNXOpConvertor):
     def convert_v9(self, ctx, op, inputs, attrs):
         if "value" not in attrs:
@@ -497,21 +497,21 @@ class ConstantConvertor(ONNXOpConvertor):
             tensor_idx=op.output[0]
         )
         return {"": output}
-    
-    
+
+
 class ClipConvertor(ONNXOpConvertor):
     def convert_v1(self, ctx, op, inputs, attrs):
         assert len(inputs) == 1
         data = inputs[0]
-        
+
         minv = attrs.get("min", -float("inf"))
         maxv = attrs.get("max", float("inf"))
-        
+
         op_attrs = {
             "min": Attribute(ConstFloat(minv)),
             "max": Attribute(ConstFloat(maxv))
         }
-        
+
         assert len(op.output) == 1
         output_name = op.output[0]
         output = Tensor(
@@ -521,7 +521,7 @@ class ClipConvertor(ONNXOpConvertor):
             name=output_name,
             tensor_idx=output_name
         )
-        
+
         clip_op = NamedOp(
             OpName.ActivationOp.Clip,
             {
@@ -532,9 +532,9 @@ class ClipConvertor(ONNXOpConvertor):
             },
             attrs=op_attrs
         )
-        
+
         return clip_op.outputs
-    
+
     def convert_v11(self, ctx, op, inputs, attrs):
         op_attrs = {}
         assert 1 <= len(inputs) <= 3
@@ -548,12 +548,12 @@ class ClipConvertor(ONNXOpConvertor):
         if "min" in attrs and "max" in attrs:
             minv = attrs.get("min", -float("inf"))
             maxv = attrs.get("max", float("inf"))
-            
+
             op_attrs = {
                 "min": Attribute(ConstFloat(minv)),
                 "max": Attribute(ConstFloat(maxv))
             }
-        
+
         assert len(op.output) == 1
         output_name = op.output[0]
         output = Tensor(
@@ -563,7 +563,7 @@ class ClipConvertor(ONNXOpConvertor):
             name=output_name,
             tensor_idx=output_name
         )
-        
+
         clip_op = NamedOp(
             OpName.ActivationOp.Clip,
             {
@@ -574,7 +574,7 @@ class ClipConvertor(ONNXOpConvertor):
             },
             attrs=op_attrs
         )
-        
+
         return clip_op.outputs
 
 
