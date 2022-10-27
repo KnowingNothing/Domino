@@ -1,0 +1,4 @@
+
+
+class PassBase(object):
+    pass

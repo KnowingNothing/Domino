@@ -5,7 +5,7 @@ from typing import Dict, Optional
 from webbrowser import Opera
 import numpy as np
 import domino
-from domino.graph_ir import Tensor, ConstTensor, Attribute, ActivationAttr, OpName, NamedOp, SubGraph, Graph
+from domino.graph_ir import Tensor, ConstTensor, Attribute, ActivationAttr, Op, SubGraph, Graph
 from domino.program_ir import ConstInt, ConstFloat, ExprList, make_const
 from domino.type_system import DType, ShapeType, GeneralDType
 from domino.graph_ir.quantize import ClipQuantParam, QuantParam, ScaleQuantParam, TensorQuantParam
@@ -35,7 +35,6 @@ try:
 except ImportError:
     raise ImportError("Can't import tflite package.\nTry `pip install tflite`")
 
-print(f"Using tflite version {tflite.__version__}.")
 try:
     import tflite.Model.Model as TFModel
 except ImportError:
@@ -222,7 +221,7 @@ class TfliteOpConvertor(object):
             "output": output_tensor_ir
         }
 
-        elem_op = NamedOp(
+        elem_op = Op.NamedOp(
             op_name,
             inputs_dict,
             outputs_dict,
@@ -328,7 +327,7 @@ class TfliteOpConvertor(object):
                 raise NotImplementedError(
                     f"No support for activation type {fused_activation_fn}")
 
-        pool_op = NamedOp(
+        pool_op = Op.NamedOp(
             op_name,
             {
                 "inputs": input_tensor_ir
@@ -499,8 +498,8 @@ class Conv2dConvertor(TfliteOpConvertor):
                 raise NotImplementedError(
                     f"No support for activation type {fused_activation_fn}")
 
-        conv_op = NamedOp(
-            OpName.ConvOp.Conv2d,
+        conv_op = Op.NamedOp(
+            Op.OpName.ConvOp.Conv2d,
             input_ir_dict,
             output_ir_dict,
             quant_params,
@@ -512,12 +511,12 @@ class Conv2dConvertor(TfliteOpConvertor):
 
 class AddConvertor(TfliteOpConvertor):
     def _convert(self, op, ctx):
-        return self._convert_elementwise(op, ctx, OpName.ElementwiseOp.Add)
+        return self._convert_elementwise(op, ctx, Op.OpName.ElementwiseOp.Add)
 
 
 class AveragePool2dConvertor(TfliteOpConvertor):
     def _convert(self, op, ctx):
-        return self._convert_pool2d(op, ctx, OpName.PoolingOp.AveragePool2d)
+        return self._convert_pool2d(op, ctx, Op.OpName.PoolingOp.AveragePool2d)
 
 
 class DepthwiseConv2dConvertor(TfliteOpConvertor):
@@ -680,8 +679,8 @@ class DepthwiseConv2dConvertor(TfliteOpConvertor):
                 raise NotImplementedError(
                     f"No support for activation type {fused_activation_fn}")
 
-        conv_op = NamedOp(
-            OpName.ConvOp.DepthwiseConv2d,
+        conv_op = Op.NamedOp(
+            Op.OpName.ConvOp.DepthwiseConv2d,
             input_ir_dict,
             output_ir_dict,
             quant_params,
@@ -727,8 +726,8 @@ class PadConvertor(TfliteOpConvertor):
             tensor_idx=output_tensor.tensor_idx
         )
 
-        pad_op = NamedOp(
-            OpName.PadOp.Pad,
+        pad_op = Op.NamedOp(
+            Op.OpName.PadOp.Pad,
             {
                 "input": input_tensor_ir
             },
@@ -752,7 +751,7 @@ class ResizeNearestNeighborConvertor(TfliteOpConvertor):
 
 class MaxPool2dConvertor(TfliteOpConvertor):
     def _convert(self, op, ctx):
-        return self._convert_pool2d(op, ctx, OpName.PoolingOp.MaxPool2d)
+        return self._convert_pool2d(op, ctx, Op.OpName.PoolingOp.MaxPool2d)
 
 
 class MeanConvertor(TfliteOpConvertor):
@@ -807,8 +806,8 @@ class ReshapeConvertor(TfliteOpConvertor):
             "target_shape": Attribute(ExprList(target_shape))
         }
 
-        reshape_op = NamedOp(
-            OpName.ScalingOp.Reshape,
+        reshape_op = Op.NamedOp(
+            Op.OpName.ScalingOp.Reshape,
             {
                 "inputs": input_tensor_ir
             },
@@ -905,12 +904,13 @@ class ConvertContext(object):
         inputs_dict = {k: self.get_tensor(k) for k in self.model_input_names}
         outputs_dict = {k: self.get_tensor(k) for k in self.model_output_names}
         subgraph = SubGraph(inputs_dict, outputs_dict)
-        return Graph(subgraph)
+        return Graph({"subgraph0": subgraph}, inputs_dict, outputs_dict)
 
 
 class TfliteConvertor(object):
     def __init__(self, path: str) -> None:
         self.model_path = path
+        print(f"Using tflite version {tflite.__version__}.")
 
     def parse(self):
         model = load_tflite_model(self.model_path)

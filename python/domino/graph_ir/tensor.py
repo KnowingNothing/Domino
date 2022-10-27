@@ -34,6 +34,10 @@ class Tensor(IRBase):
     @property
     def dtype(self) -> DType:
         return self.ttype.dtype
+    
+    @dtype.setter
+    def dtype(self, new_dtype: GeneralDType):
+        self.ttype = TType(new_dtype, self.shape)
 
     @property
     def layout(self) -> Optional[str]:
@@ -44,10 +48,10 @@ class Tensor(IRBase):
         self.layout_str = layout_str
 
     def __str__(self) -> str:
-        return f"Tensor({self.ttype}, {self.name}, {self.layout}, {self.produce_op})"
+        return f"Tensor({self.ttype}, {self.name}, {self.layout}, {hex(id(self.produce_op))})"
 
     def __repr__(self) -> str:
-        return str(self)
+        return f"Tensor({self.ttype}, {self.name})"
 
 
 class ConstTensor(Tensor):

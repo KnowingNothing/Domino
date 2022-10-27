@@ -2,7 +2,7 @@ from math import prod
 import onnx
 import numpy as np
 from onnx.numpy_helper import to_array
-from domino.graph_ir import ConstTensor, Tensor, Attribute, NamedOp, OpName, SubGraph, Graph
+from domino.graph_ir import ConstTensor, Tensor, Attribute, Op, SubGraph, Graph
 from domino.program_ir import ConstInt, ConstUInt, ConstFloat, ExprList
 
 
@@ -157,8 +157,8 @@ class ConvConvertor(ONNXOpConvertor):
                 filter.layout = "KMRS"
                 assert _C == 1, f"Expect Depthwise Conv has in_channel = 1, but get {_C}"
 
-                conv_op = NamedOp(
-                    OpName.ConvOp.DepthwiseConv2d,
+                conv_op = Op.NamedOp(
+                    Op.OpName.ConvOp.DepthwiseConv2d,
                     inputs_dict,
                     outputs_dict,
                     attrs=op_attrs
@@ -167,8 +167,8 @@ class ConvConvertor(ONNXOpConvertor):
                 raise NotImplementedError("Grouped Conv is not supported yet.")
         else:
             assert C == _C
-            conv_op = NamedOp(
-                OpName.ConvOp.Conv2d,
+            conv_op = Op.NamedOp(
+                Op.OpName.ConvOp.Conv2d,
                 inputs_dict,
                 outputs_dict,
                 attrs=op_attrs
@@ -201,8 +201,8 @@ class ReluConvertor(ONNXOpConvertor):
             "output": output
         }
 
-        relu_op = NamedOp(
-            OpName.ActivationOp.ReLU,
+        relu_op = Op.NamedOp(
+            Op.OpName.ActivationOp.ReLU,
             inputs_dict,
             outputs_dict
         )
@@ -272,15 +272,15 @@ class PoolConvertor(ONNXOpConvertor):
         )
 
         # TODO: support other versions of pooling
-        if op_name == OpName.PoolingOp.MaxPool:
-            op_name = OpName.PoolingOp.MaxPool2d
-        elif op_name == OpName.PoolingOp.AveragePool:
-            op_name = OpName.PoolingOp.AveragePool2d
+        if op_name == Op.OpName.PoolingOp.MaxPool:
+            op_name = Op.OpName.PoolingOp.MaxPool2d
+        elif op_name == Op.OpName.PoolingOp.AveragePool:
+            op_name = Op.OpName.PoolingOp.AveragePool2d
         else:
             raise NotImplementedError(
                 f"Pool operator {op_name} is not supported yet.")
 
-        pool_op = NamedOp(
+        pool_op = Op.NamedOp(
             op_name,
             {
                 "inputs": data
@@ -296,12 +296,12 @@ class PoolConvertor(ONNXOpConvertor):
 
 class MaxPoolConvertor(PoolConvertor):
     def convert_v1(self, ctx, op, inputs, attrs):
-        return super().convert_v1(ctx, op, inputs, attrs, OpName.PoolingOp.MaxPool)
+        return super().convert_v1(ctx, op, inputs, attrs, Op.OpName.PoolingOp.MaxPool)
 
 
 class AveragePoolConvertor(PoolConvertor):
     def convert_v1(self, ctx, op, inputs, attrs):
-        return super().convert_v1(ctx, op, inputs, attrs, OpName.PoolingOp.AveragePool)
+        return super().convert_v1(ctx, op, inputs, attrs, Op.OpName.PoolingOp.AveragePool)
 
 
 class ElementwiseConvertor(ONNXOpConvertor):
@@ -330,7 +330,7 @@ class ElementwiseConvertor(ONNXOpConvertor):
             tensor_idx=output_name
         )
 
-        elem_op = NamedOp(
+        elem_op = Op.NamedOp(
             op_name,
             {
                 "lhs": lhs,
@@ -346,7 +346,7 @@ class ElementwiseConvertor(ONNXOpConvertor):
 
 class AddConvertor(ElementwiseConvertor):
     def convert_v1(self, ctx, op, inputs, attrs):
-        return super().convert_v1(ctx, op, inputs, attrs, OpName.ElementwiseOp.Add)
+        return super().convert_v1(ctx, op, inputs, attrs, Op.OpName.ElementwiseOp.Add)
 
 
 class GlobalAveragePoolConvertor(ONNXOpConvertor):
@@ -370,8 +370,8 @@ class GlobalAveragePoolConvertor(ONNXOpConvertor):
             tensor_idx=output_name
         )
 
-        global_pool_op = NamedOp(
-            OpName.PoolingOp.GlobalAveragePool2d,
+        global_pool_op = Op.NamedOp(
+            Op.OpName.PoolingOp.GlobalAveragePool2d,
             {
                 "inputs": inputs[0]
             },
@@ -402,8 +402,8 @@ class FlattenConvertor(ONNXOpConvertor):
             tensor_idx=output_name
         )
 
-        flat_op = NamedOp(
-            OpName.ScalingOp.Flatten,
+        flat_op = Op.NamedOp(
+            Op.OpName.ScalingOp.Flatten,
             {
                 "inputs": data
             },
@@ -463,8 +463,8 @@ class GemmConvertor(ONNXOpConvertor):
             tensor_idx=output_name
         )
 
-        gemm_op = NamedOp(
-            OpName.MatrixOp.Gemm,
+        gemm_op = Op.NamedOp(
+            Op.OpName.MatrixOp.Gemm,
             {
                 "inputs": inputs[0],
                 "weight": inputs[1]
@@ -522,8 +522,8 @@ class ClipConvertor(ONNXOpConvertor):
             tensor_idx=output_name
         )
 
-        clip_op = NamedOp(
-            OpName.ActivationOp.Clip,
+        clip_op = Op.NamedOp(
+            Op.OpName.ActivationOp.Clip,
             {
                 "inputs": data
             },
@@ -564,8 +564,8 @@ class ClipConvertor(ONNXOpConvertor):
             tensor_idx=output_name
         )
 
-        clip_op = NamedOp(
-            OpName.ActivationOp.Clip,
+        clip_op = Op.NamedOp(
+            Op.OpName.ActivationOp.Clip,
             {
                 "inputs": data
             },
@@ -659,7 +659,7 @@ class ONNXConvertor(object):
             inputs[name] = t
 
         subgraph = SubGraph(inputs, outputs)
-        return Graph(subgraph)
+        return Graph({"subgraph0": subgraph}, inputs, outputs)
 
     def parse_data(self, tensor_proto):
         np_array = to_array(tensor_proto)
