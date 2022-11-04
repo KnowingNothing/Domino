@@ -88,6 +88,9 @@ class GraphVisitor(PassBase):
             if name in target_subgraphs:
                 self.visit_subgraph(subgraph)
 
+    def __call__(self, graph: Graph, specify_subgraphs: Optional[Union[Set[str], List[str]]] = None, init_state=True) -> Any:
+        self.visit_graph(graph, specify_subgraphs=specify_subgraphs, init_state=init_state)
+
 
 class GraphMutator(PassBase):
     def __init__(self) -> None:
@@ -272,3 +275,6 @@ class GraphMutator(PassBase):
                 new_outputs[name] = tensor
 
         return Graph(new_subgraphs, new_inputs, new_outputs)
+
+    def __call__(self, graph: Graph) -> Any:
+        return self.mutate_graph(graph)

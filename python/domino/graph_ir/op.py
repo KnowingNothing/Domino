@@ -9,7 +9,7 @@ from ..program_ir import ConstFloat, ConstInt, ConstString
 from .quantize import OpQuantParam, TensorQuantParam
 
 
-__all__ = ["OpName", "NamedOp", "ConvOp", "ActivationAttr"]
+__all__ = ["OpName", "all_ops_in" "NamedOp", "ConvOp", "ActivationAttr"]
 
 
 class OpName(object):
@@ -61,6 +61,13 @@ class OpName(object):
     class DimOrderOp(enum.Enum):
         Transpose = "Transpose"
 
+
+def all_ops_in(scope):
+    ret = []
+    for name in dir(scope):
+        if not name.startswith("_"):
+            ret.append(getattr(scope, name))
+    return ret
 
 class ActivationAttr(Attribute):
     def __init__(self, value: str) -> None:
