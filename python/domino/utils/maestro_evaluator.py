@@ -1,4 +1,5 @@
 import os
+import json
 from subprocess import Popen, PIPE
 import pandas as pd
 import numpy as np
@@ -91,6 +92,9 @@ MaestroResults = namedtuple(
         "mac"
     ]
 )
+
+def maestro_results_as_json(results: MaestroResults):
+    return json.dumps(results._asdict())
 
 
 def run_maestro(mapping_file_name, command):

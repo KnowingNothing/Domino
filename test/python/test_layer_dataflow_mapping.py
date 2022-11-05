@@ -1,5 +1,6 @@
 import json
 import os
+import networkx as nx
 from typing import Set, Optional, Union, List, Any
 from domino import utils
 from domino.graph_ir import Op, Tensor, Graph
@@ -177,13 +178,13 @@ gemm_mapping_templates = {
              f"K: {K}, M: {M}, N: {N} "
              "}\n"
              "Dataflow {\n"
-             "        SpatialMap(32, 32) M;\n"
-             "        SpatialMap(32, 32) N;\n"
-             "        TemporalMap(32, 32) K;\n"
-             "        TemporalMap(16, 16) M;\n"
-             "        Cluster(32, P);\n"
-             "        SpatialMap(16, 16) N;\n"
-             "        SpatialMap(16, 16) K;\n"
+             "        SpatialMap(1, 1) M;\n"
+             "        TemporalMap(16, 16) N;\n"
+             "        TemporalMap(16, 16) K;\n"
+             "        Cluster(16, P);\n"
+             "        SpatialMap(1, 1) N;\n"
+             "        TemporalMap(1, 1) M;\n"
+             "        TemporalMap(16, 16) K;\n"
              "}\n"
              "}\n"
              "}\n")
@@ -194,6 +195,26 @@ class LayerwiseDataflowMapping(GraphVisitor):
     def __init__(self) -> None:
         super(LayerwiseDataflowMapping, self).__init__()
 
+    def _clear_states(self):
+        self._visited_conv2d_shape = {}
+        self._visited_depthwise_shape = {}
+        self._graph = nx.Graph()
+        self._unique_node_id = 0
+        self._transit_node_mappings = {}
+
+    def _make_graph_node(self, info, input_dtype, weight_dtype, output_dtype, hw_name, configs):
+        hw_configs = {
+            "name": hw_name,
+            "area": configs.area[0],
+            "L1": configs.l1_size,
+            "power": configs.power,
+            "input_dtype": str(input_dtype),
+            "weight_dtype": str(weight_dtype),
+            "output_dtype": str(output_dtype)
+        }
+        self._unique_node_id += 1
+        return (self._unique_node_id, {"layer_info": info, "hw_configs": hw_configs})
+
     ##==------------------ General Op Visitor ------------------==##
     def visit_op(self, op: Op.NamedOp, boundary_tensors: Set[Tensor]):
         """The default visitor does noting
@@ -202,6 +223,18 @@ class LayerwiseDataflowMapping(GraphVisitor):
             op, Op.NamedOp), "Expect GraphMutator to handle NamedOp"
         if self.has_visited_op(op):
             return self.get_op_visited(op)
+
+        for name, input_tensor in op.inputs.items():
+            if input_tensor in boundary_tensors:
+                # subgraph inputs
+                pass
+            elif input_tensor.produce_op is not None:
+                # compute op
+                visitor = self.get_visitor(input_tensor.produce_op)
+                visitor(input_tensor.produce_op, boundary_tensors)
+            else:
+                # producer op
+                pass
 
         if op.name == Op.OpName.ConvOp.Conv2d:
             assert len(op.inputs) >= 2
@@ -227,48 +260,79 @@ class LayerwiseDataflowMapping(GraphVisitor):
             stride_h = op.attrs["strides"].value[0].value
             stride_w = op.attrs["strides"].value[1].value
 
-            best_runtime = float("inf")
-            best_results = None
-            for hw, template in conv2d_mapping_templates.items():
-                mapping_contents = template(
-                    H, W, P, Q, K, C, R, S, stride_h, stride_w)
-                # print(mapping_contents)
+            shape_key = (H, W, P, Q, K, C, R, S, stride_h, stride_w)
+            if shape_key in self._visited_conv2d_shape:
+                res = self._visited_conv2d_shape[shape_key]
+            else:
+                best_runtime = float("inf")
+                best_results = None
+                for hw, template in conv2d_mapping_templates.items():
+                    mapping_contents = template(
+                        H, W, P, Q, K, C, R, S, stride_h, stride_w)
+                    # print(mapping_contents)
 
-                mapping_file = "sample_mapping"
+                    mapping_file = "sample_mapping"
 
-                if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
-                    os.remove(f"{mapping_file}.m")
+                    if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
+                        os.remove(f"{mapping_file}.m")
 
-                with open(f"{mapping_file}.m", "w") as fout:
-                    fout.write(mapping_contents)
+                    with open(f"{mapping_file}.m", "w") as fout:
+                        fout.write(mapping_contents)
 
-                maestro_path = utils.find_maestro()
-                command = utils.generate_maestro_command(
-                    maestro_path,
-                    mapping_file,
-                    1000,  # noc_bw,
-                    50,  # off_chip_bw,
-                    256,  # num_pes,
-                    100,  # l1_size,
-                    3000,  # l2_size,
+                    maestro_path = utils.find_maestro()
+                    command = utils.generate_maestro_command(
+                        maestro_path,
+                        mapping_file,
+                        1000,  # noc_bw,
+                        50,  # off_chip_bw,
+                        256,  # num_pes,
+                        100,  # l1_size,
+                        3000,  # l2_size,
+                    )
+
+                    results = utils.run_maestro(mapping_file, command)
+
+                    if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
+                        os.remove(f"{mapping_file}.m")
+
+                    info = f"Conv({H},{W},{C},{P},{Q},{K},{R},{S},{stride_h},{stride_w})"
+                    tmp_res = {
+                        "info": info,
+                        "hw_name": hw,
+                        "evaluation": results
+                    }
+                    if results.runtime[0] < best_runtime:
+                        best_runtime = results.runtime[0]
+                        best_results = tmp_res
+
+                    # print(info, results.runtime[0])
+                assert best_results is not None
+                res = best_results
+                node = self._make_graph_node(
+                    res["info"],
+                    data.dtype,
+                    weight.dtype,
+                    output.dtype,
+                    res["hw_name"],
+                    res["evaluation"]
                 )
+                self._graph.add_nodes_from([node])
 
-                results = utils.run_maestro(mapping_file, command)
+                for name, input_tensor in op.inputs.items():
+                    if input_tensor in boundary_tensors:
+                        # subgraph inputs
+                        pass
+                    elif input_tensor.produce_op is not None:
+                        # compute op
+                        assert input_tensor.produce_op in self._transit_node_mappings
 
-                if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
-                    os.remove(f"{mapping_file}.m")
+                        for parent_node in self._transit_node_mappings[input_tensor.produce_op]:
+                            self._graph.add_edge(parent_node[0], node[0])
+                    else:
+                        # producer op
+                        pass
 
-                info = f"Conv({H},{W},{C},{P},{Q},{K},{R},{S},{stride_h},{stride_w})"
-                tmp_res = {
-                    "info": info,
-                    "evaluation": results
-                }
-                if results.runtime[0] < best_runtime:
-                    best_runtime = results.runtime[0]
-                    best_results = tmp_res
-
-                # print(info, results.runtime[0])
-            res = best_results
+                self._transit_node_mappings[op] = [node]
 
         elif op.name == Op.OpName.ConvOp.DepthwiseConv2d:
             assert len(op.inputs) >= 2
@@ -294,48 +358,79 @@ class LayerwiseDataflowMapping(GraphVisitor):
             stride_h = op.attrs["strides"].value[0].value
             stride_w = op.attrs["strides"].value[1].value
 
-            best_runtime = float("inf")
-            best_results = None
-            for hw, template in depthwise_conv2d_mapping_templates.items():
-                mapping_contents = template(
-                    H, W, P, Q, K, M, R, S, stride_h, stride_w)
-                # print(mapping_contents)
+            shape_key = (H, W, P, Q, K, M, R, S, stride_h, stride_w)
+            if shape_key in self._visited_depthwise_shape:
+                res = self._visited_depthwise_shape[shape_key]
+            else:
+                best_runtime = float("inf")
+                best_results = None
+                for hw, template in depthwise_conv2d_mapping_templates.items():
+                    mapping_contents = template(
+                        H, W, P, Q, K, M, R, S, stride_h, stride_w)
+                    # print(mapping_contents)
 
-                mapping_file = "sample_mapping"
+                    mapping_file = "sample_mapping"
 
-                if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
-                    os.remove(f"{mapping_file}.m")
+                    if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
+                        os.remove(f"{mapping_file}.m")
 
-                with open(f"{mapping_file}.m", "w") as fout:
-                    fout.write(mapping_contents)
+                    with open(f"{mapping_file}.m", "w") as fout:
+                        fout.write(mapping_contents)
 
-                maestro_path = utils.find_maestro()
-                command = utils.generate_maestro_command(
-                    maestro_path,
-                    mapping_file,
-                    1000,  # noc_bw,
-                    50,  # off_chip_bw,
-                    256,  # num_pes,
-                    100,  # l1_size,
-                    3000,  # l2_size,
+                    maestro_path = utils.find_maestro()
+                    command = utils.generate_maestro_command(
+                        maestro_path,
+                        mapping_file,
+                        1000,  # noc_bw,
+                        50,  # off_chip_bw,
+                        256,  # num_pes,
+                        100,  # l1_size,
+                        3000,  # l2_size,
+                    )
+
+                    results = utils.run_maestro(mapping_file, command)
+
+                    if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
+                        os.remove(f"{mapping_file}.m")
+
+                    info = f"DepthwiseConv({H},{W},{M},{P},{Q},{K},{R},{S},{stride_h},{stride_w})"
+                    tmp_res = {
+                        "info": info,
+                        "hw_name": hw,
+                        "evaluation": results
+                    }
+                    if results.runtime[0] < best_runtime:
+                        best_runtime = results.runtime[0]
+                        best_results = tmp_res
+
+                    # print(info, results.runtime[0])
+                assert best_results is not None
+                res = best_results
+                node = self._make_graph_node(
+                    res["info"],
+                    data.dtype,
+                    weight.dtype,
+                    output.dtype,
+                    res["hw_name"],
+                    res["evaluation"]
                 )
+                self._graph.add_nodes_from([node])
 
-                results = utils.run_maestro(mapping_file, command)
+                for name, input_tensor in op.inputs.items():
+                    if input_tensor in boundary_tensors:
+                        # subgraph inputs
+                        pass
+                    elif input_tensor.produce_op is not None:
+                        # compute op
+                        assert input_tensor.produce_op in self._transit_node_mappings
 
-                if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
-                    os.remove(f"{mapping_file}.m")
+                        for parent_node in self._transit_node_mappings[input_tensor.produce_op]:
+                            self._graph.add_edge(parent_node[0], node[0])
+                    else:
+                        # producer op
+                        pass
 
-                info = f"DepthwiseConv({H},{W},{M},{P},{Q},{K},{R},{S},{stride_h},{stride_w})"
-                tmp_res = {
-                    "info": info,
-                    "evaluation": results
-                }
-                if results.runtime[0] < best_runtime:
-                    best_runtime = results.runtime[0]
-                    best_results = tmp_res
-
-                # print(info, results.runtime[0])
-            res = best_results
+                self._transit_node_mappings[op] = [node]
         elif op.name == Op.OpName.MatrixOp.Gemm:
             assert len(op.inputs) >= 2
             assert len(op.outputs) >= 1
@@ -396,6 +491,7 @@ class LayerwiseDataflowMapping(GraphVisitor):
                 info = f"GEMM({M},{N},{K})"
                 tmp_res = {
                     "info": info,
+                    "hw_name": hw,
                     "evaluation": results
                 }
                 if results.runtime[0] < best_runtime:
@@ -403,36 +499,69 @@ class LayerwiseDataflowMapping(GraphVisitor):
                     best_results = tmp_res
 
                 # print(info, results.runtime[0])
+            assert best_results is not None
             res = best_results
+            node = self._make_graph_node(
+                res["info"],
+                data.dtype,
+                weight.dtype,
+                output.dtype,
+                res["hw_name"],
+                res["evaluation"]
+            )
+            self._graph.add_nodes_from([node])
+
+            for name, input_tensor in op.inputs.items():
+                if input_tensor in boundary_tensors:
+                    # subgraph inputs
+                    pass
+                elif input_tensor.produce_op is not None:
+                    # compute op
+                    assert input_tensor.produce_op in self._transit_node_mappings
+
+                    for parent_node in self._transit_node_mappings[input_tensor.produce_op]:
+                        self._graph.add_edge(parent_node[0], node[0])
+                else:
+                    # producer op
+                    pass
+
+            self._transit_node_mappings[op] = [node]
         else:
+            # omit this op in mapping
+            parent_nodes = []
+            for name, input_tensor in op.inputs.items():
+                if input_tensor in boundary_tensors:
+                    # subgraph inputs
+                    pass
+                elif input_tensor.produce_op is not None:
+                    # compute op
+                    assert input_tensor.produce_op in self._transit_node_mappings
+
+                    parent_nodes.extend(
+                        self._transit_node_mappings[input_tensor.produce_op])
+                else:
+                    # producer op
+                    pass
+
+            self._transit_node_mappings[op] = parent_nodes
             res = None
 
-        for name, input_tensor in op.inputs.items():
-            if input_tensor in boundary_tensors:
-                # subgraph inputs
-                pass
-            elif input_tensor.produce_op is not None:
-                # compute op
-                visitor = self.get_visitor(input_tensor.produce_op)
-                visitor(input_tensor.produce_op, boundary_tensors)
-            else:
-                # producer op
-                pass
         return self.record_visited_op(op, res)
 
     def __call__(self, graph: Graph, specify_subgraphs: Optional[Union[Set[str], List[str]]] = None, init_state=True) -> Any:
+        self._clear_states()
         self.visit_graph(
             graph, specify_subgraphs=specify_subgraphs, init_state=init_state)
-        return self._visited_ops
+        return self._graph
 
 
 def test_layerwise_mapping():
     # config_path = "new_resnet18_pareto.json"
     # model_path = "raw_resnet18.onnx"
-    # config_path = "new_mobilenetv2_pareto.json"
-    # model_path = "raw_mobilenetv2.onnx"
-    config_path = "new_resnet50_pareto.json"
-    model_path = "raw_resnet50.onnx"
+    config_path = "new_mobilenetv2_pareto.json"
+    model_path = "raw_mobilenetv2.onnx"
+    # config_path = "new_resnet50_pareto.json"
+    # model_path = "raw_resnet50.onnx"
 
     graph = get_graph(model_path)
     configs = get_precision_configs(config_path)
@@ -456,7 +585,9 @@ def test_layerwise_mapping():
 
     mapper = LayerwiseDataflowMapping()
     for graph in graphs:
-        mapper(graph)
+        nx_graph = mapper(graph)
+        nx.write_gpickle(nx_graph, "sample_graph.pkl")
+        break
     printer = GraphPrinter()
     ret = printer(graphs[0])
     # print(ret)

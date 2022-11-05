@@ -52,7 +52,7 @@ def test_example_mapping_nvdla():
     }
     """
 
-    mapping_contents ="""
+    mapping_contents = """
     Network BLAS3 {
 	Layer BLAS {
 		Type: GEMM
