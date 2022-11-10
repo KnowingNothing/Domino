@@ -3,7 +3,7 @@ import onnx
 import numpy as np
 from onnx.numpy_helper import to_array
 from domino.graph_ir import ConstTensor, Tensor, Attribute, Op, SubGraph, Graph
-from domino.program_ir import ConstInt, ConstUInt, ConstFloat, ExprList
+from domino.program_ir import ConstInt, ConstUInt, ConstFloat, ConstString, ExprList
 
 
 def get_type(elem_type):
@@ -310,15 +310,19 @@ class ElementwiseConvertor(ONNXOpConvertor):
         lhs = inputs[0]
         rhs = inputs[1]
         # TODO: how to support broadcast?
-        assert lhs.shape == rhs.shape, (
-            f"{op_name} operand shapes mismatch: {lhs.shape} vs {rhs.shape}")
-        assert lhs.dtype == rhs.dtype
-        if lhs.layout is None:
-            lhs.layout = rhs.layout
-        elif rhs.layout is None:
-            rhs.layout = lhs.layout
+        if len(rhs.shape) > 0:
+            assert lhs.shape == rhs.shape, (
+                f"\n{op}: {op_name} operand shapes mismatch: {lhs.shape} vs {rhs.shape}")
+            assert lhs.dtype == rhs.dtype
+            if lhs.layout is None:
+                lhs.layout = rhs.layout
+            elif rhs.layout is None:
+                rhs.layout = lhs.layout
+            else:
+                assert lhs.layout == rhs.layout
         else:
-            assert lhs.layout == rhs.layout
+            # rhs.shape = 0, scalar
+            op_name = Op.OpName.elementwise_to_tensor_scalar_op(op_name)
 
         assert len(op.output) == 1
         output_name = op.output[0]
@@ -347,6 +351,16 @@ class ElementwiseConvertor(ONNXOpConvertor):
 class AddConvertor(ElementwiseConvertor):
     def convert_v1(self, ctx, op, inputs, attrs):
         return super().convert_v1(ctx, op, inputs, attrs, Op.OpName.ElementwiseOp.Add)
+
+
+class MulConvertor(ElementwiseConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        return super().convert_v1(ctx, op, inputs, attrs, Op.OpName.ElementwiseOp.Mul)
+
+
+class PowConvertor(ElementwiseConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        return super().convert_v1(ctx, op, inputs, attrs, Op.OpName.ElementwiseOp.Pow)
 
 
 class GlobalAveragePoolConvertor(ONNXOpConvertor):
@@ -578,17 +592,296 @@ class ClipConvertor(ONNXOpConvertor):
         return clip_op.outputs
 
 
+class SigmoidConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        assert len(inputs) == 1
+        data = inputs[0]
+
+        assert len(op.output) == 1
+        output_name = op.output[0]
+        output = Tensor(
+            data.shape,
+            data.dtype,
+            layout=data.layout,
+            name=output_name,
+            tensor_idx=output_name
+        )
+
+        sig_op = Op.NamedOp(
+            Op.OpName.ActivationOp.Sigmoid,
+            {
+                "inputs": data
+            },
+            {
+                "output": output
+            },
+        )
+
+        return sig_op.outputs
+
+
+class ConcatConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        assert "axis" in attrs
+        axis = attrs["axis"]
+
+        op_attrs = {
+            "axis": Attribute(ConstInt(axis))
+        }
+
+        num_inputs = len(inputs)
+        assert num_inputs > 0
+        output_shape = inputs[0].shape
+        output_dtype = inputs[0].dtype
+        output_layout = inputs[0].layout
+        assert axis < len(output_shape)
+        for i in range(1, num_inputs):
+            cur_shape = inputs[i].shape
+            assert len(cur_shape) == len(output_shape)
+            output_shape[axis] += cur_shape[axis]
+            assert inputs[i].dtype.type_kind == output_dtype.type_kind
+            output_dtype.bits = max(output_dtype.bits, inputs[i].dtype.bits)
+            assert inputs[i].layout is None or inputs[i].layout == output_layout
+
+        assert len(op.output) == 1
+        output_name = op.output[0]
+        output = Tensor(
+            output_shape,
+            output_dtype,
+            layout=output_layout,
+            name=output_name,
+            tensor_idx=output_name
+        )
+
+        cat_op = Op.NamedOp(
+            Op.OpName.DimOrderOp.Concat,
+            {
+                f"inputs{i}": inputs[i] for i in range(num_inputs)
+            },
+            {
+                "output": output
+            },
+            attrs=op_attrs
+        )
+
+        return cat_op.outputs
+
+
+class ResizeConvertor(ONNXOpConvertor):
+    def convert_v11(self, ctx, op, inputs, attrs):
+        assert len(inputs) == 3
+        data, roi, scales = inputs
+        assert len(scales.shape) == 1
+        assert scales.shape[0] == len(data.shape)
+
+        output_shape = []
+        for s, v in zip(data.shape, scales.value):
+            output_shape.append(int(s * v))
+
+        op_attrs = {}
+        if "coordinate_transformation_mode" in attrs:
+            op_attrs["coordinate_transformation_mode"] = Attribute(ConstString(
+                str(attrs["coordinate_transformation_mode"].decode("utf-8"))))
+        if "cubic_coeff_a" in attrs:
+            op_attrs["cubic_coeff_a"] = Attribute(
+                ConstFloat(attrs["cubic_coeff_a"]))
+        if "mode" in attrs:
+            op_attrs["mode"] = Attribute(ConstString(
+                str(attrs["mode"].decode("utf-8"))))
+        if "nearest_mode" in attrs:
+            op_attrs["nearest_mode"] = Attribute(ConstString(
+                str(attrs["nearest_mode"].decode("utf-8"))))
+
+        assert len(op.output) == 1
+        output_name = op.output[0]
+        output = Tensor(
+            output_shape,
+            data.dtype,
+            layout=data.layout,
+            name=output_name,
+            tensor_idx=output_name
+        )
+        resize_op = Op.NamedOp(
+            Op.OpName.ScalingOp.Resize,
+            {
+                "inputs": data,
+                "roi": roi,
+                "scales": scales
+            },
+            {
+                "output": output
+            },
+            attrs=op_attrs
+        )
+
+        return resize_op.outputs
+
+
+class ReshapeConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        assert len(inputs) == 2
+        data, new_shape = inputs
+
+        met_unknown = False
+        unknown_pos = -1
+        total_elems = prod(data.shape, start=1)
+        remain_elems = 1
+
+        output_shape = list(map(int, new_shape.value))
+        for i in range(len(output_shape)):
+            if output_shape[i] == -1:
+                if met_unknown:
+                    raise RuntimeError("Can't reshape with more than one '-1'")
+                met_unknown = True
+                unknown_pos = i
+            else:
+                remain_elems *= output_shape[i]
+
+        if met_unknown:
+            output_shape[unknown_pos] = total_elems // remain_elems
+            assert output_shape[unknown_pos] * remain_elems == total_elems
+
+        assert prod(data.shape, start=1) == prod(
+            output_shape, start=1), (f"{prod(data.shape, start=1)} vs {prod(output_shape, start=1)}")
+
+        assert len(op.output) == 1
+        output_name = op.output[0]
+        output = Tensor(
+            output_shape,
+            data.dtype,
+            layout=None,
+            name=output_name,
+            tensor_idx=output_name
+        )
+        reshape_op = Op.NamedOp(
+            Op.OpName.ScalingOp.Reshape,
+            {
+                "inputs": data,
+                "new_shape": new_shape
+            },
+            {
+                "output": output
+            },
+        )
+
+        return reshape_op.outputs
+
+
+class TransposeConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        assert len(inputs) == 1
+        data, = inputs
+
+        assert "perm" in attrs
+        output_shape = []
+        if data.layout is not None:
+            input_layout = list(data.layout)
+            output_layout = [x for x in input_layout]
+        else:
+            output_layout = None
+
+        for v in attrs["perm"]:
+            output_shape.append(data.shape[v])
+            if output_layout is not None:
+                output_layout[v] = input_layout[v]
+
+        assert len(op.output) == 1
+        output_name = op.output[0]
+        output = Tensor(
+            output_shape,
+            data.dtype,
+            layout="".join(
+                output_layout) if output_layout is not None else None,
+            name=output_name,
+            tensor_idx=output_name
+        )
+        trans_op = Op.NamedOp(
+            Op.OpName.DimOrderOp.Transpose,
+            {
+                "inputs": data,
+            },
+            {
+                "output": output
+            },
+            attrs={
+                "perm": Attribute(
+                    ExprList(
+                        [ConstInt(x) for x in attrs["perm"]]
+                    )
+                )
+            }
+        )
+
+        return trans_op.outputs
+
+
+class SplitConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        assert len(inputs) == 1
+        data, = inputs
+
+        assert "axis" in attrs
+        axis = attrs["axis"]
+        assert axis < len(data.shape)
+        assert "split" in attrs
+        split = attrs["split"]
+        num_outputs = len(split)
+
+        op_attrs = {
+            "axis": Attribute(ConstInt(axis)),
+            "split": Attribute(ExprList([ConstInt(x) for x in split]))
+        }
+
+        output_shapes = []
+        for s in split:
+            tmp_shape = data.shape
+            tmp_shape[axis] = s
+            output_shapes.append(tmp_shape)
+
+        output_tensors = [
+            Tensor(
+                output_shape,
+                data.dtype,
+                layout=data.layout,
+                name=output_name,
+                tensor_idx=output_name
+            )
+            for output_shape, output_name in zip(output_shapes, op.output)
+        ]
+
+        split_op = Op.NamedOp(
+            Op.OpName.DimOrderOp.Split,
+            {
+                "inputs": data,
+            },
+            {
+                f"output{i}": output_tensors[i] for i in range(num_outputs)
+            },
+            attrs=op_attrs
+        )
+
+        return split_op.outputs
+
+
 CONVERT_MAP = {
     "Conv": ConvConvertor,
     "Relu": ReluConvertor,
     "MaxPool": MaxPoolConvertor,
     "AveragePool": AveragePoolConvertor,
     "Add": AddConvertor,
+    "Mul": MulConvertor,
+    "Pow": PowConvertor,
     "GlobalAveragePool": GlobalAveragePoolConvertor,
     "Flatten": FlattenConvertor,
     "Gemm": GemmConvertor,
     "Constant": ConstantConvertor,
-    "Clip": ClipConvertor
+    "Clip": ClipConvertor,
+    "Sigmoid": SigmoidConvertor,
+    "Concat": ConcatConvertor,
+    "Resize": ResizeConvertor,
+    "Reshape": ReshapeConvertor,
+    "Transpose": TransposeConvertor,
+    "Split": SplitConvertor,
 }
 
 

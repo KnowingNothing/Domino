@@ -29,7 +29,7 @@ class Tensor(IRBase):
 
     @property
     def shape(self) -> ShapeType:
-        return self.ttype.shape
+        return [x for x in self.ttype.shape]
 
     @property
     def dtype(self) -> DType:

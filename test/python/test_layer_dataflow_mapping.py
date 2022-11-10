@@ -82,10 +82,10 @@ conv2d_mapping_templates = {
              "        TemporalMap(1,1) K;\n"
              "        TemporalMap(1,1) C;\n"
              "        SpatialMap(Sz(R), 1) Y;\n"
-             "        TemporalMap(8,8) X;\n"
+             "        TemporalMap(128,128) X;\n"
              "        TemporalMap(Sz(R), Sz(R)) R;\n"
              "        TemporalMap(Sz(S), Sz(S)) S;\n"
-             "        Cluster(8, P);\n"
+             "        Cluster(64, P);\n"
              "        SpatialMap(Sz(S), 1) X;\n"
              "}\n"
              "}\n"
@@ -115,31 +115,31 @@ conv2d_mapping_templates = {
              "}\n"
              "}\n"
              "}\n"),
-    "TPU":
-        lambda H, W, P, Q, K, C, R, S, stride_h, stride_w:
-            ("Network sample_net {\n"
-             "Layer Conv2d {\n"
-             "Type: CONV\n"
-             "Stride { "
-             f"X: {stride_h}, Y: {stride_w} "
-             "}\n"
-             "Dimensions { "
-             f"K: {K}, C: {C}, R: {R}, S: {S}, Y: {H}, X: {W} "
-             "}\n"
-             "Dataflow {\n"
-             "        TemporalMap(16,16) K;\n"
-             "        SpatialMap(Sz(R),1) Y;\n"
-             "        TemporalMap(Sz(S),1) X;\n"
-             "        TemporalMap(1,1) C;\n"
-             "        Cluster(16, P);\n"
-             "        SpatialMap(1,1) K;\n"
-             "        TemporalMap(Sz(R),1) Y;\n"
-             "        TemporalMap(Sz(S),1) X;\n"
-             "        TemporalMap(Sz(R),7) R;\n"
-             "        TemporalMap(Sz(S),7) S;\n"
-             "}\n"
-             "}\n"
-             "}\n"),
+    # "TPU":
+    #     lambda H, W, P, Q, K, C, R, S, stride_h, stride_w:
+    #         ("Network sample_net {\n"
+    #          "Layer Conv2d {\n"
+    #          "Type: CONV\n"
+    #          "Stride { "
+    #          f"X: {stride_h}, Y: {stride_w} "
+    #          "}\n"
+    #          "Dimensions { "
+    #          f"K: {K}, C: {C}, R: {R}, S: {S}, Y: {H}, X: {W} "
+    #          "}\n"
+    #          "Dataflow {\n"
+    #          "        TemporalMap(16,16) K;\n"
+    #          "        SpatialMap(Sz(R),1) Y;\n"
+    #          "        TemporalMap(Sz(S),1) X;\n"
+    #          "        TemporalMap(1,1) C;\n"
+    #          "        Cluster(16, P);\n"
+    #          "        SpatialMap(1,1) K;\n"
+    #          "        TemporalMap(Sz(R),1) Y;\n"
+    #          "        TemporalMap(Sz(S),1) X;\n"
+    #          "        TemporalMap(Sz(R),7) R;\n"
+    #          "        TemporalMap(Sz(S),7) S;\n"
+    #          "}\n"
+    #          "}\n"
+    #          "}\n"),
 }
 
 depthwise_conv2d_mapping_templates = {
@@ -169,7 +169,7 @@ depthwise_conv2d_mapping_templates = {
 
 
 gemm_mapping_templates = {
-    "Gemmini":
+    "TPU":
         lambda M, N, K:
             ("Network sample_net {\n"
              "Layer GEMM {\n"
@@ -191,9 +191,37 @@ gemm_mapping_templates = {
 }
 
 
+MAX_BW = 81920000
+
+
+def compute_area_external(num_pe, l1_size, l2_size, precision):
+    """return um^2"""
+    alpha = 2.3141918
+    TABLE = {
+        "444": 282/alpha/alpha/alpha,
+        "448": 282/alpha/alpha,
+        "484": 282/alpha/alpha,
+        "488": 282/alpha,
+        "884": 282/alpha,
+        "888": 282
+    }
+    # MAC_AREA_INT8=282
+    # MAC_AREA_INT32=3495
+    MAC_AREA = TABLE[precision]
+    BUF_AREA_perbit = 0.086
+    buf_size = l1_size * num_pe + l2_size
+    area = num_pe * MAC_AREA + buf_size * BUF_AREA_perbit * 8
+    return area
+
+
 class LayerwiseDataflowMapping(GraphVisitor):
     def __init__(self) -> None:
         super(LayerwiseDataflowMapping, self).__init__()
+        self.noc_bw = MAX_BW  # noc_bw,
+        self.off_chip_bw = MAX_BW  # off_chip_bw,
+        self.num_pes = 65536  # num_pes,
+        self.l1_size = 4000000  # l1_size,
+        self.l2_size = 24000000  # l2_size,
 
     def _clear_states(self):
         self._visited_conv2d_shape = {}
@@ -202,18 +230,32 @@ class LayerwiseDataflowMapping(GraphVisitor):
         self._unique_node_id = 0
         self._transit_node_mappings = {}
 
-    def _make_graph_node(self, info, input_dtype, weight_dtype, output_dtype, hw_name, configs):
+    def _make_graph_node(self, info, input_elements, input_dtype, weight_dtype, output_dtype, hw_name, configs):
+        input_width = int(str(input_dtype).replace('int', ''))
+        weight_width = int(str(input_dtype).replace('int', ''))
+        output_width = int(str(output_dtype).replace('int', ''))
+        precision = f"{min(input_width, weight_width)}{max(input_width, weight_width)}{output_width}"
+        area = compute_area_external(
+            self.num_pes,
+            configs.l1_size[0],
+            configs.l2_size[0],
+            precision
+        )
+
         hw_configs = {
             "name": hw_name,
-            "area": configs.area[0],
-            "L1": configs.l1_size,
-            "power": configs.power,
+            "runtime": configs.runtime[0],
+            "area": area,
+            "L1": configs.l1_size[0],
+            "L2": configs.l2_size[0],
+            "power": configs.power[0],
             "input_dtype": str(input_dtype),
             "weight_dtype": str(weight_dtype),
             "output_dtype": str(output_dtype)
         }
+
         self._unique_node_id += 1
-        return (self._unique_node_id, {"layer_info": info, "hw_configs": hw_configs})
+        return (self._unique_node_id, {"layer_info": info, "input_elements": input_elements, "hw_configs": hw_configs})
 
     ##==------------------ General Op Visitor ------------------==##
     def visit_op(self, op: Op.NamedOp, boundary_tensors: Set[Tensor]):
@@ -283,11 +325,11 @@ class LayerwiseDataflowMapping(GraphVisitor):
                     command = utils.generate_maestro_command(
                         maestro_path,
                         mapping_file,
-                        1000,  # noc_bw,
-                        50,  # off_chip_bw,
-                        256,  # num_pes,
-                        100,  # l1_size,
-                        3000,  # l2_size,
+                        self.noc_bw,
+                        self.off_chip_bw,  # off_chip_bw,
+                        self.num_pes,  # num_pes,
+                        self.l1_size,  # l1_size,
+                        self.l2_size,  # l2_size,
                     )
 
                     results = utils.run_maestro(mapping_file, command)
@@ -310,6 +352,7 @@ class LayerwiseDataflowMapping(GraphVisitor):
                 res = best_results
                 node = self._make_graph_node(
                     res["info"],
+                    H * W * C,
                     data.dtype,
                     weight.dtype,
                     output.dtype,
@@ -327,7 +370,11 @@ class LayerwiseDataflowMapping(GraphVisitor):
                         assert input_tensor.produce_op in self._transit_node_mappings
 
                         for parent_node in self._transit_node_mappings[input_tensor.produce_op]:
-                            self._graph.add_edge(parent_node[0], node[0])
+                            parent_node_name, parent_node_contents = parent_node
+                            # parent_node_contents["output_elements"] / res["evaluation"].runtime[0]
+                            edge_weight = -1
+                            self._graph.add_edge(
+                                parent_node_name, node[0], weight=edge_weight)
                     else:
                         # producer op
                         pass
@@ -381,11 +428,11 @@ class LayerwiseDataflowMapping(GraphVisitor):
                     command = utils.generate_maestro_command(
                         maestro_path,
                         mapping_file,
-                        1000,  # noc_bw,
-                        50,  # off_chip_bw,
-                        256,  # num_pes,
-                        100,  # l1_size,
-                        3000,  # l2_size,
+                        self.noc_bw,
+                        self.off_chip_bw,  # off_chip_bw,
+                        self.num_pes,  # num_pes,
+                        self.l1_size,  # l1_size,
+                        self.l2_size,  # l2_size,
                     )
 
                     results = utils.run_maestro(mapping_file, command)
@@ -408,6 +455,7 @@ class LayerwiseDataflowMapping(GraphVisitor):
                 res = best_results
                 node = self._make_graph_node(
                     res["info"],
+                    H * W * K // M,
                     data.dtype,
                     weight.dtype,
                     output.dtype,
@@ -425,7 +473,11 @@ class LayerwiseDataflowMapping(GraphVisitor):
                         assert input_tensor.produce_op in self._transit_node_mappings
 
                         for parent_node in self._transit_node_mappings[input_tensor.produce_op]:
-                            self._graph.add_edge(parent_node[0], node[0])
+                            parent_node_name, parent_node_contents = parent_node
+                            # parent_node_contents["output_elements"] / res["evaluation"].runtime[0]
+                            edge_weight = -1
+                            self._graph.add_edge(
+                                parent_node_name, node[0], weight=edge_weight)
                     else:
                         # producer op
                         pass
@@ -476,11 +528,11 @@ class LayerwiseDataflowMapping(GraphVisitor):
                 command = utils.generate_maestro_command(
                     maestro_path,
                     mapping_file,
-                    1000,  # noc_bw,
-                    50,  # off_chip_bw,
-                    256,  # num_pes,
-                    100,  # l1_size,
-                    3000,  # l2_size,
+                    self.noc_bw,
+                    self.off_chip_bw,  # off_chip_bw,
+                    self.num_pes,  # num_pes,
+                    self.l1_size,  # l1_size,
+                    self.l2_size,  # l2_size,
                 )
 
                 results = utils.run_maestro(mapping_file, command)
@@ -503,6 +555,7 @@ class LayerwiseDataflowMapping(GraphVisitor):
             res = best_results
             node = self._make_graph_node(
                 res["info"],
+                M * K,
                 data.dtype,
                 weight.dtype,
                 output.dtype,
@@ -520,7 +573,11 @@ class LayerwiseDataflowMapping(GraphVisitor):
                     assert input_tensor.produce_op in self._transit_node_mappings
 
                     for parent_node in self._transit_node_mappings[input_tensor.produce_op]:
-                        self._graph.add_edge(parent_node[0], node[0])
+                        parent_node_name, parent_node_contents = parent_node
+                        # parent_node_contents["output_elements"] / res["evaluation"].runtime[0]
+                        edge_weight = -1
+                        self._graph.add_edge(
+                            parent_node_name, node[0], weight=edge_weight)
                 else:
                     # producer op
                     pass
@@ -555,13 +612,94 @@ class LayerwiseDataflowMapping(GraphVisitor):
         return self._graph
 
 
+def post_process(nx_graph):
+    REAL_BW = 1.5e12  # byte/s
+    REAL_FREQ = 200e6  # Hz
+    min_runtime = float("inf")
+    min_layer = None
+    min_hw = None
+    max_runtime = 0
+    max_layer = None
+    max_hw = None
+
+    max_overhead = 0
+    # max_input_elements = 0
+    # max_input_dtype = 0
+
+    min_area = float("inf")
+    max_area = 0
+    for node in nx_graph.nodes:
+        print("l1_size:", nx_graph.nodes[node]["hw_configs"]["L1"])
+        print("l2_size:", nx_graph.nodes[node]["hw_configs"]["L2"])
+        hw = nx_graph.nodes[node]["hw_configs"]["name"]
+        area = nx_graph.nodes[node]["hw_configs"]["area"]
+        layer_info = nx_graph.nodes[node]["layer_info"]
+        runtime = nx_graph.nodes[node]["hw_configs"]["runtime"]
+        input_elements = nx_graph.nodes[node]["input_elements"]
+        input_dtype = int(
+            nx_graph.nodes[node]["hw_configs"]["input_dtype"].replace("int", "")) / 8
+
+        if runtime < min_runtime:
+            min_runtime = runtime
+            min_layer = layer_info
+            min_hw = hw
+
+        if area < min_area:
+            min_area = area
+
+        if area > max_area:
+            max_area = area
+
+        if runtime > max_runtime:
+            max_runtime = runtime
+            max_layer = layer_info
+            max_hw = hw
+
+        overhead = runtime / REAL_FREQ + \
+            (input_elements * input_dtype) / REAL_BW
+        if overhead > max_overhead:
+            max_overhead = overhead
+            # max_input_elements = nx_graph.nodes[node]["input_elements"]
+            # max_input_dtype = int(nx_graph.nodes[node]["hw_configs"]["input_dtype"].replace("int", "")) / 8
+
+    print(min_runtime, max_runtime, max_runtime / min_runtime)
+    print("min runtime:", min_layer, min_hw)
+    print("max runtime:", max_layer, max_hw)
+
+    print("min area:", min_area/1e6)
+    print("max area:", max_area/1e6)
+
+    target_overhead = max_overhead
+
+    for edge in nx_graph.edges:
+        if edge[0] > edge[1]:
+            continue
+        node = edge[1]
+        runtime = nx_graph.nodes[node]["hw_configs"]["runtime"]
+        compute_overhead = runtime / REAL_FREQ
+        remain_overhead = target_overhead - compute_overhead
+        input_elements = nx_graph.nodes[node]["input_elements"]
+        input_dtype = int(
+            nx_graph.nodes[node]["hw_configs"]["input_dtype"].replace("int", "")) / 8
+        input_bytes = input_elements * input_dtype
+        required_bw = input_bytes / remain_overhead
+        nx_graph[edge[0]][node]["weight"] = required_bw
+
+    # for edge in nx_graph.edges:
+    #     if edge[0] > edge[1]:
+    #         continue
+    #     print(edge, nx_graph[edge[0]][edge[1]])
+
+
 def test_layerwise_mapping():
     # config_path = "new_resnet18_pareto.json"
     # model_path = "raw_resnet18.onnx"
-    config_path = "new_mobilenetv2_pareto.json"
-    model_path = "raw_mobilenetv2.onnx"
+    # config_path = "new_mobilenetv2_pareto.json"
+    # model_path = "raw_mobilenetv2.onnx"
     # config_path = "new_resnet50_pareto.json"
     # model_path = "raw_resnet50.onnx"
+    config_path = "w_a_joint_yolov5_pareto.json"
+    model_path = "yolov5s_640x640.simplify.onnx"
 
     graph = get_graph(model_path)
     configs = get_precision_configs(config_path)
@@ -584,9 +722,11 @@ def test_layerwise_mapping():
         graphs.append(new_graph)
 
     mapper = LayerwiseDataflowMapping()
-    for graph in graphs:
+    for i, graph in enumerate(graphs):
         nx_graph = mapper(graph)
-        nx.write_gpickle(nx_graph, "sample_graph.pkl")
+        post_process(nx_graph)
+        nx.write_gpickle(
+            nx_graph, f"{config_path.replace('.json', '')}_{i}.pkl")
         break
     printer = GraphPrinter()
     ret = printer(graphs[0])

@@ -31,10 +31,18 @@ class OpName(object):
 
     class ElementwiseOp(enum.Enum):
         Add = "ElemAdd"
+        Mul = "ElemMul"
+        Pow = "ElemPow"
+
+    class BroadcastOp(enum.Enum):
+        TensorScalarAdd = "TensorScalarAdd"
+        TensorScalarMul = "TensorScalarMul"
+        TensorScalarPow = "TensorScalarPow"
 
     class ActivationOp(enum.Enum):
         ReLU = "ReLU"
         Clip = "Clip"
+        Sigmoid = "Sigmoid"
 
     class PoolingOp(enum.Enum):
         AveragePool1d = "AveragePool1d"
@@ -54,12 +62,27 @@ class OpName(object):
         ResizeNearestNeighbor = "ResizeNearestNeighbor"
         Reshape = "Reshape"
         Flatten = "Flatten"
+        Resize = "Resize"
 
     class ReduceOp(enum.Enum):
         Mean = "Mean"
 
     class DimOrderOp(enum.Enum):
         Transpose = "Transpose"
+        Concat = "Concat"
+        Split = "Split"
+
+    @classmethod
+    def elementwise_to_tensor_scalar_op(cls, org_name: ElementwiseOp):
+        if org_name == cls.ElementwiseOp.Add:
+            return cls.BroadcastOp.TensorScalarAdd
+        elif org_name == cls.ElementwiseOp.Mul:
+            return cls.BroadcastOp.TensorScalarMul
+        elif org_name == cls.ElementwiseOp.Pow:
+            return cls.BroadcastOp.TensorScalarPow
+        else:
+            raise RuntimeError(
+                f"Don't support elementwise-to-broadcast for {org_name}")
 
 
 def all_ops_in(scope):
@@ -68,6 +91,7 @@ def all_ops_in(scope):
         if not name.startswith("_"):
             ret.append(getattr(scope, name))
     return ret
+
 
 class ActivationAttr(Attribute):
     def __init__(self, value: str) -> None:
@@ -110,11 +134,10 @@ class NamedOp(OpBase):
         if attrs is not None:
             for k, v in attrs.items():
                 assert isinstance(v, Attribute)
-                
+
     def __str__(self):
         return f"{self.name}(\n\t{self.inputs},\n\t{self.outputs})"
-    
-    
+
     def __repr__(self) -> str:
         return f"{self.name}(\n\t{self.inputs},\n\t{self.outputs})"
 
