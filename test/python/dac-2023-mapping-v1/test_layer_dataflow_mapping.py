@@ -67,6 +67,33 @@ conv2d_mapping_templates = {
              "}\n"
              "}\n"
              "}\n"),
+    "NVDLA":
+        lambda H, W, P, Q, K, C, R, S, stride_h, stride_w:
+            ("Network sample_net {\n"
+             "Layer Conv2d {\n"
+             "Type: CONV\n"
+             "Stride { "
+             f"X: {stride_h}, Y: {stride_w} "
+             "}\n"
+             "Dimensions { "
+             f"K: {K}, C: {C}, R: {R}, S: {S}, Y: {H}, X: {W} "
+             "}\n"
+             "Dataflow {\n"
+             "        SpatialMap(1,1) K;\n"
+             "        TemporalMap(128,128) C;\n"
+             "        TemporalMap(Sz(R),Sz(R)) R;\n"
+             "        TemporalMap(Sz(S),Sz(S)) S;\n"
+             "        TemporalMap(Sz(R),1) Y;\n"
+             "        TemporalMap(Sz(S),1) X;\n"
+             "        Cluster(128, P);\n"
+             "        SpatialMap(1,1) C;\n"
+             "        TemporalMap(Sz(R),1) Y;\n"
+             "        TemporalMap(Sz(S),1) X;\n"
+             "        TemporalMap(Sz(R),Sz(R)) R;\n"
+             "        TemporalMap(Sz(S),Sz(S)) S;\n"
+             "}\n"
+             "}\n"
+             "}\n"),
     "ShiDianNao":
         lambda H, W, P, Q, K, C, R, S, stride_h, stride_w:
             ("Network sample_net {\n"
@@ -631,6 +658,7 @@ def post_process(nx_graph):
     # max_area = 0
     max_memory_usage = {
         "TPU": 0,
+        "NVDLA": 0,
         "ShiDianNao": 0
     }
     for node in nx_graph.nodes:
@@ -709,46 +737,53 @@ def post_process(nx_graph):
 
 
 def test_layerwise_mapping():
+    paths = [
+        ("new_resnet18_pareto.json", "raw_resnet18.onnx"),
+        ("new_mobilenetv2_pareto.json", "raw_mobilenetv2.onnx"),
+        ("new_resnet50_pareto.json", "raw_resnet50.onnx"),
+        ("w_a_joint_yolov5_pareto.json", "yolov5s_640x640.simplify.onnx")
+    ]
+    for config_path, model_path in paths:
     # config_path = "new_resnet18_pareto.json"
     # model_path = "raw_resnet18.onnx"
     # config_path = "new_mobilenetv2_pareto.json"
     # model_path = "raw_mobilenetv2.onnx"
     # config_path = "new_resnet50_pareto.json"
     # model_path = "raw_resnet50.onnx"
-    config_path = "w_a_joint_yolov5_pareto.json"
-    model_path = "yolov5s_640x640.simplify.onnx"
+    # config_path = "w_a_joint_yolov5_pareto.json"
+    # model_path = "yolov5s_640x640.simplify.onnx"
 
-    graph = get_graph(model_path)
-    configs = get_precision_configs(config_path)
+        graph = get_graph(f"../{model_path}")
+        configs = get_precision_configs(f"../{config_path}")
 
-    graphs = []
-    for config in configs:
-        new_graph = set_graph_precision(
-            graph,
-            config,
-            graph_inputs_precision="int8",
-            target_ops=[
-                *Op.all_ops_in(Op.OpName.ActivationOp),
-                *Op.all_ops_in(Op.OpName.PoolingOp),
-                *Op.all_ops_in(Op.OpName.ScalingOp),
-                *Op.all_ops_in(Op.OpName.ElementwiseOp),
-                *Op.all_ops_in(Op.OpName.PadOp),
-                *Op.all_ops_in(Op.OpName.ReduceOp),
-                *Op.all_ops_in(Op.OpName.DimOrderOp), ]
-        )
-        graphs.append(new_graph)
+        graphs = []
+        for config in configs:
+            new_graph = set_graph_precision(
+                graph,
+                config,
+                graph_inputs_precision="int8",
+                target_ops=[
+                    *Op.all_ops_in(Op.OpName.ActivationOp),
+                    *Op.all_ops_in(Op.OpName.PoolingOp),
+                    *Op.all_ops_in(Op.OpName.ScalingOp),
+                    *Op.all_ops_in(Op.OpName.ElementwiseOp),
+                    *Op.all_ops_in(Op.OpName.PadOp),
+                    *Op.all_ops_in(Op.OpName.ReduceOp),
+                    *Op.all_ops_in(Op.OpName.DimOrderOp), ]
+            )
+            graphs.append(new_graph)
 
-    mapper = LayerwiseDataflowMapping()
-    for i, graph in enumerate(graphs):
-        nx_graph = mapper(graph)
-        post_process(nx_graph)
-        nx.write_gpickle(
-            nx_graph, f"{config_path.replace('.json', '')}_{i}.pkl")
-        break
-    printer = GraphPrinter()
-    ret = printer(graphs[0])
-    # print(ret)
-    assert ret
+        mapper = LayerwiseDataflowMapping()
+        for i, graph in enumerate(graphs):
+            nx_graph = mapper(graph)
+            post_process(nx_graph)
+            nx.write_gpickle(
+                nx_graph, f"{config_path.replace('.json', '')}_{i}.pkl")
+            break
+        # printer = GraphPrinter()
+        # ret = printer(graphs[0])
+        # print(ret)
+        # assert ret
 
 
 if __name__ == "__main__":
