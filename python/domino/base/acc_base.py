@@ -6,9 +6,11 @@ from typing import Dict, Any, List
 from collections import OrderedDict
 from .. import global_timer
 
-class AccTask(object): 
+
+class AccTask(object):
     unique_id = 0
-    def __init__(self, name, task_kind = None, params: Dict[str, Any] = {}, depend_tasks: List["AccTask"] = []) -> None:
+
+    def __init__(self, name, task_kind=None, params: Dict[str, Any] = {}, depend_tasks: List["AccTask"] = []) -> None:
         assert task_kind in [None, "Conv2d", "Depthwise", "Gemm"]
         self.name = name  # The unique id in compute_graph
         self.unique_id = AccTask.unique_id
@@ -48,8 +50,10 @@ class AccTask(object):
 
 
 class AccStream(object):
-    def __init__(self) -> None:
+    def __init__(self, idx) -> None:
+        self.idx = idx
         self._stream = []
+        self._to_commit = []
         self._elapsed_time = 0
 
     def __getitem__(self, idx):
@@ -66,9 +70,9 @@ class AccStream(object):
         self._stream.append(task)
 
     def retire(self, task, elapsed_time):
-        assert len(self._stream) > 0
-        assert task == self._stream[0], f"{task} vs {self._stream[0]}"
-        self._stream = self._stream[1:]
+        assert len(self._to_commit) > 0
+        assert task == self._to_commit[-1], f"stream: {self.idx}: {task} vs {self._to_commit[-1]}"
+        self._to_commit = self._to_commit[:-1]
         self._elapsed_time += elapsed_time
         return self._elapsed_time
 
@@ -90,9 +94,13 @@ class AccStream(object):
     def head(self):
         return self._stream[0]
 
+    def prepare_to_commit(self):
+        self._to_commit.append(self.head())
+        self._stream = self._stream[1:]
+
 
 class AcceleratorBase(object):
-    
+
     def __init__(self, name, n_stream, freq=200, num_pes=65536, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000) -> None:
         self.name = name
         self.freq = freq  # Hz
@@ -103,15 +111,16 @@ class AcceleratorBase(object):
         self.l2_size = l2_size  # byte
         self.unique_stream_id = 0  # increase only
         self.streams = OrderedDict()
-        self.streams[self.unique_stream_id] = AccStream()
+        self.streams[self.unique_stream_id] = AccStream(self.unique_stream_id)
         self.board = {}  # record mapping task to stream idx
         self.topo_id = (0)
-        for _ in range(n_stream): self.add_new_stream()
+        for _ in range(n_stream):
+            self.add_new_stream()
 
     def add_new_stream(self):
         self.unique_stream_id += 1
         idx = self.unique_stream_id
-        self.streams[idx] = AccStream()
+        self.streams[idx] = AccStream(idx)
         return idx
 
     def delete_stream(self, idx):
@@ -124,7 +133,7 @@ class AcceleratorBase(object):
     def get_stream(self, idx):
         assert idx in self.streams
         return self.streams[idx]
-    
+
     def __getitem__(self, idx):
         assert idx in self.streams
         return self.streams[idx]
@@ -166,24 +175,25 @@ class AcceleratorBase(object):
         total_tasks = 0
         for idx, stream in self.streams.items():
             total_tasks += stream.num_tasks()
-        
+
         def commit():
             global_timer.start('actual commit')
             nonlocal phase
-            nonlocal cur_pe_usage 
+            nonlocal cur_pe_usage
             sync_time = 0
             for idx, task in phase.items():
                 stream = self.get_stream(idx)
                 task_params = task.get_params()
                 fetch_data_cost = self.evaluate_fetch_data(task, soc)
                 compute_time_cost = self.evaluate_compute(*task_params)
-                sync_time = max(sync_time, stream.retire(task, fetch_data_cost + compute_time_cost))
+                sync_time = max(sync_time, stream.retire(
+                    task, fetch_data_cost + compute_time_cost))
             for idx, task in phase.items():
                 self.get_stream(idx)._elapsed_time = sync_time
             phase = {}
             cur_pe_usage = 0
             global_timer.stop('actual commit')
-            
+
         while total_tasks > 0:
             # this traverse is ordered according to idx because we use OrderedDict
             pushed = False
@@ -204,36 +214,39 @@ class AcceleratorBase(object):
                         continue
                     cur_pe_usage += task_pe_usage
                     phase[idx] = task
-                    
+                    stream.prepare_to_commit()
+
                     pushed = True
             if not pushed and len(phase):
                 total_tasks -= len(phase)
                 commit()
+        assert len(phase) == 0, f"{phase}"
         return max([x._elapsed_time for x in self.streams.values()])
 
     def sync(self, time):
         for stream in self.streams.values():
             assert time >= stream._elapsed_time
-            stream._elapsed_time = time 
-    
+            stream._elapsed_time = time
+
     def get_current_elapsed_time(self):
         return max([stream.get_current_elapsed_time() for stream in self.streams.values()])
-        
 
     compute_cache = {}
+
     @staticmethod
     def load_cache(dir: str = './.cache'):
         file = os.path.join(dir, "accelerator.pkl")
         if os.path.exists(file):
             with open(file, 'rb') as f:
                 AcceleratorBase.compute_cache = pkl.load(f)
+
     @staticmethod
     def store_cache(dir: str = './.cache/'):
         file = os.path.join(dir, "accelerator.pkl")
         if os.path.exists(file):
             with open(file, 'wb') as f:
                 pkl.dump(AcceleratorBase.compute_cache, f)
-        
+
 
 class SoCBase(object):
     def __init__(self, accelerator_graph: nx.DiGraph) -> None:
@@ -258,7 +271,8 @@ class SoCBase(object):
     def push_task(self, task, acc: str, stream_id):
         assert isinstance(acc, str)
         self._bind_table[task.unique_id] = (acc, stream_id)
-        self.accelerator_graph.nodes[acc]['acc'].push_task_to_stream(stream_id, task)
+        self.accelerator_graph.nodes[acc]['acc'].push_task_to_stream(
+            stream_id, task)
 
     def get_all_streams(self):
         ret = []
@@ -270,16 +284,16 @@ class SoCBase(object):
         self.elapsed_time = 0.0
         for acc_name in self.accelerator_graph.nodes:
             acc = self.accelerator_graph.nodes[acc_name]["acc"]
-            self.elapsed_time = max(self.elapsed_time, acc.commit_current_tasks(self)) 
+            self.elapsed_time = max(
+                self.elapsed_time, acc.commit_current_tasks(self))
             for i in range(acc.num_streams()):
                 assert acc[i].empty()
-        # sync 
+        # sync
         for _, acc in self.accelerator_graph.nodes.data('acc'):
             acc.sync(self.elapsed_time)
-            
-        
-        return self.elapsed_time 
-        
+
+        return self.elapsed_time
+
     def get_current_elapsed_time(self):
         max_time = 0
         for acc_name in self.accelerator_graph.nodes:
@@ -288,4 +302,4 @@ class SoCBase(object):
         return max_time
 
     def snapshot(self):
-        return copy.deepcopy(self) 
+        return copy.deepcopy(self)
