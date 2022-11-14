@@ -40,6 +40,12 @@ class AccTask(object):
     def __hash__(self) -> int:
         return hash((self.name, self.task_kind, tuple(self.params)))
 
+    def __str__(self) -> str:
+        return f"Task({self.name}, {self.task_kind}, {self.params})"
+
+    def __repr__(self) -> str:
+        return str(self)
+
 
 class AccStream(object):
     def __init__(self) -> None:
@@ -61,7 +67,7 @@ class AccStream(object):
 
     def retire(self, task, elapsed_time):
         assert len(self._stream) > 0
-        assert task == self._stream[0]
+        assert task == self._stream[0], f"{task} vs {self._stream[0]}"
         self._stream = self._stream[1:]
         self._elapsed_time += elapsed_time
         return self._elapsed_time
@@ -186,7 +192,7 @@ class AcceleratorBase(object):
                     task = stream.head()
                     task_params = task.get_params()
                     task_pe_usage = self.spatial_used_pes(*task_params)
-                    assert cur_pe_usage < self.num_pes
+                    assert cur_pe_usage <= self.num_pes, f"{cur_pe_usage} vs {self.num_pes}"
                     if cur_pe_usage + task_pe_usage > self.num_pes:
                         total_tasks -= len(phase)
                         commit()
