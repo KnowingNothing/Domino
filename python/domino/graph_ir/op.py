@@ -1,5 +1,5 @@
 from optparse import Option
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Any
 import enum
 import numpy as np
 from ..type_system import GeneralDType
@@ -133,14 +133,30 @@ class NamedOp(OpBase):
         # check attrs
         if attrs is not None:
             for k, v in attrs.items():
+                print(type(v))
                 assert isinstance(v, Attribute)
 
     def __str__(self):
-        return f"{self.name}(\n\t{self.inputs},\n\t{self.outputs})"
+        return f"{self.name}(\n\t{self.inputs},\n\t{self.outputs},\n\t{self.quant_params},{self.attrs})"
 
     def __repr__(self) -> str:
         return f"{self.name}(\n\t{self.inputs},\n\t{self.outputs})"
 
+    def get_config(self) -> Dict[str, Any]:
+        if self.name == OpName.ConvOp.Conv2d:
+            print (self.inputs.keys())
+            n,c,h,w = self.inputs['inputs'].shape 
+            k,C,r,s = self.inputs['weight'].shape 
+            N,K,p,q =self.outputs['output'].shape 
+            assert n == N 
+            assert K == k 
+            assert c == C
+            strides = self.attrs['strides'].value
+            print(type(strides))
+            return {'N': n, 'H':h, 'W': w, 'P': p, 'Q': q, 'K': k, 'C': c, 'R':r, 'S':s, 'stride_h': strides[0].value, 'stride_w': strides[1].value}
+        else:
+            print(self.name)
+            raise NotImplementedError()
 
 GeneralInt = Union[int, ConstInt]
 

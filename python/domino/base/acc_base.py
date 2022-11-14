@@ -1,14 +1,18 @@
 import os
 import copy
+import pickle as pkl
 import networkx as nx
 from typing import Dict, Any, List
 from collections import OrderedDict
+from .. import global_timer
 
-
-class AccTask(object):
-    def __init__(self, name, task_kind, params: Dict[str, Any], depend_tasks: List["AccTask"]) -> None:
-        assert task_kind in ["Conv2d", "Depthwise", "Gemm"]
+class AccTask(object): 
+    unique_id = 0
+    def __init__(self, name, task_kind = None, params: Dict[str, Any] = {}, depend_tasks: List["AccTask"] = []) -> None:
+        assert task_kind in [None, "Conv2d", "Depthwise", "Gemm"]
         self.name = name  # The unique id in compute_graph
+        self.unique_id = AccTask.unique_id
+        AccTask.unique_id += 1
         self.task_kind = task_kind
         self.params = params
         self.depend_tasks = depend_tasks  # the parent tasks of this task
@@ -60,6 +64,7 @@ class AccStream(object):
         assert task == self._stream[0]
         self._stream = self._stream[1:]
         self._elapsed_time += elapsed_time
+        return self._elapsed_time
 
     def find(self, task):
         """
@@ -81,7 +86,8 @@ class AccStream(object):
 
 
 class AcceleratorBase(object):
-    def __init__(self, name, freq=200, num_pes=65536, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000) -> None:
+    
+    def __init__(self, name, n_stream, freq=200, num_pes=65536, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000) -> None:
         self.name = name
         self.freq = freq  # Hz
         self.num_pes = num_pes
@@ -93,6 +99,8 @@ class AcceleratorBase(object):
         self.streams = OrderedDict()
         self.streams[self.unique_stream_id] = AccStream()
         self.board = {}  # record mapping task to stream idx
+        self.topo_id = (0)
+        for _ in range(n_stream): self.add_new_stream()
 
     def add_new_stream(self):
         self.unique_stream_id += 1
@@ -108,6 +116,10 @@ class AcceleratorBase(object):
         return len(self.streams)
 
     def get_stream(self, idx):
+        assert idx in self.streams
+        return self.streams[idx]
+    
+    def __getitem__(self, idx):
         assert idx in self.streams
         return self.streams[idx]
 
@@ -149,19 +161,24 @@ class AcceleratorBase(object):
         total_tasks = 0
         for idx, stream in self.streams.items():
             total_tasks += stream.num_tasks()
-
+        
         def commit():
+            global_timer.start('actual commit')
             nonlocal phase
-            nonlocal cur_pe_usage
+            nonlocal cur_pe_usage 
+            sync_time = 0
             for idx, task in phase.items():
                 stream = self.get_stream(idx)
                 task_params = task.get_params()
                 fetch_data_cost = self.evaluate_fetch_data(task, soc)
                 compute_time_cost = self.evaluate_compute(*task_params)
-                stream.retire(task, fetch_data_cost + compute_time_cost)
+                sync_time = max(sync_time, stream.retire(task, fetch_data_cost + compute_time_cost))
+            for idx, task in phase.items():
+                self.get_stream(idx)._elapsed_time = sync_time
             phase = {}
             cur_pe_usage = 0
-
+            global_timer.stop('actual commit')
+            
         while total_tasks > 0:
             # this traverse is ordered according to idx because we use OrderedDict
             pushed = False
@@ -170,7 +187,9 @@ class AcceleratorBase(object):
                     task = stream.head()
                     task_params = task.get_params()
                     task_pe_usage = self.spatial_used_pes(*task_params)
+                    assert cur_pe_usage < self.num_pes
                     if cur_pe_usage + task_pe_usage > self.num_pes:
+                        total_tasks -= len(phase)
                         commit()
                     if idx in phase:
                         # note that for every traverse of the head
@@ -180,25 +199,48 @@ class AcceleratorBase(object):
                         continue
                     cur_pe_usage += task_pe_usage
                     phase[idx] = task
-                    total_tasks -= 1
+                    
                     pushed = True
             if not pushed and len(phase):
+                total_tasks -= len(phase)
                 commit()
+        return max([x._elapsed_time for x in self.streams.values()])
 
+    def sync(self, time):
+        for stream in self.streams.values():
+            assert time >= stream._elapsed_time
+            stream._elapsed_time = time 
+    
     def get_current_elapsed_time(self):
         return max([stream.get_current_elapsed_time() for stream in self.streams.values()])
+        
 
+    compute_cache = {}
+    @staticmethod
+    def load_cache(dir: str = './.cache'):
+        file = os.path.join(dir, "accelerator.pkl")
+        if os.path.exists(file):
+            with open(file, 'rb') as f:
+                AcceleratorBase.compute_cache = pkl.load(f)
+    @staticmethod
+    def store_cache(dir: str = './.cache/'):
+        file = os.path.join(dir, "accelerator.pkl")
+        if os.path.exists(file):
+            with open(file, 'wb') as f:
+                pkl.dump(AcceleratorBase.compute_cache, f)
+        
 
 class SoCBase(object):
     def __init__(self, accelerator_graph: nx.DiGraph) -> None:
         self.accelerator_graph = accelerator_graph
+        self.elapsed_time = 0
         self._bind_table = {}  # task id to (accelerator_id, stream_id)
 
     def evaluate_data_transfer(self, task_from: AccTask, task_to: AccTask):
-        assert task_from in self._bind_table
-        assert task_to in self._bind_table
-        acc_from, stream_from = self._bind_table[task_from]
-        acc_to, stream_to = self._bind_table[task_to]
+        assert task_from.unique_id in self._bind_table
+        assert task_to.unique_id in self._bind_table
+        acc_from, stream_from = self._bind_table[task_from.unique_id]
+        acc_to, stream_to = self._bind_table[task_to.unique_id]
         transfer_volume = task_from.get_output_data_volume() / 1e9  # unit is GB
         try:
             # unit is GB/s
@@ -208,18 +250,37 @@ class SoCBase(object):
             print(f"Can't get the bandwidth from {acc_from} to {acc_to}")
             raise e
 
-    def push_task(self, task, acc: AcceleratorBase, stream_id):
-        assert isinstance(acc, AcceleratorBase)
-        acc.push_task_to_stream(stream_id, task)
+    def push_task(self, task, acc: str, stream_id):
+        assert isinstance(acc, str)
+        self._bind_table[task.unique_id] = (acc, stream_id)
+        self.accelerator_graph.nodes[acc]['acc'].push_task_to_stream(stream_id, task)
+
+    def get_all_streams(self):
+        ret = []
+        for name, acc in self.accelerator_graph.nodes.data('acc'):
+            ret += [(name, i) for i in range(acc.num_streams())]
+        return ret
 
     def commit_all_tasks(self):
+        self.elapsed_time = 0.0
         for acc_name in self.accelerator_graph.nodes:
             acc = self.accelerator_graph.nodes[acc_name]["acc"]
-            acc.commit_current_tasks(self)
-
+            self.elapsed_time = max(self.elapsed_time, acc.commit_current_tasks(self)) 
+            for i in range(acc.num_streams()):
+                assert acc[i].empty()
+        # sync 
+        for _, acc in self.accelerator_graph.nodes.data('acc'):
+            acc.sync(self.elapsed_time)
+            
+        
+        return self.elapsed_time 
+        
     def get_current_elapsed_time(self):
         max_time = 0
         for acc_name in self.accelerator_graph.nodes:
             acc = self.accelerator_graph.nodes[acc_name]["acc"]
             max_time = max(max_time, acc.get_current_elapsed_time())
         return max_time
+
+    def snapshot(self):
+        return copy.deepcopy(self) 

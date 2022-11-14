@@ -18,6 +18,7 @@ class MeshSoC(SoCBase):
         for i in range(num_rows):
             for j in range(num_cols):
                 acc = accelerator_matrix[i][j]
+                acc.topo_id = (i,j)
                 assert acc.name not in visited, "Please use unique name for each accelerator instance"
                 accelerator_graph.add_node(acc.name, acc=acc)
         for i in range(num_rows):

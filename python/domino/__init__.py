@@ -1,0 +1,1 @@
+from .globals import global_timer

@@ -8,8 +8,8 @@ from .conv_acc import ConvAccelerator
 
 
 class NVDLA(ConvAccelerator):
-    def __init__(self, name, freq=200, num_pes=65536, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000) -> None:
-        super(NVDLA, self).__init__(name, freq=freq, num_pes=65536, noc_bw=81920000,
+    def __init__(self, name, n_stream = 1, freq=200, num_pes=65536, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000) -> None:
+        super(NVDLA, self).__init__(name, n_stream, freq=freq, num_pes=65536, noc_bw=81920000,
                                     off_chip_bw=81920000, l1_size=4000000, l2_size=24000000)
 
     def get_mapping(self, H, W, P, Q, K, C, R, S, stride_h, stride_w):
@@ -47,3 +47,9 @@ class NVDLA(ConvAccelerator):
         This is calculated according to the mapping
         """
         return K * 64
+    
+    def __str__(self) -> str:
+        return f'NVDLA{self.topo_id}'
+
+    def __repr__(self) -> str:
+        return f'NVDLA{self.topo_id}'
