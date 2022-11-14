@@ -124,7 +124,6 @@ class AcceleratorBase(object):
         return self.streams[idx]
 
     def push_task_to_stream(self, idx, task: AccTask):
-        assert task.task_kind == "Conv2d"
         stream = self.get_stream(idx)
         stream.add(task)
         self.board[task] = idx

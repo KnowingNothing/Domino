@@ -6,21 +6,22 @@ from ..base import AcceleratorBase, AccTask
 from ..utils import run_maestro, generate_maestro_command, find_maestro
 from .. import global_timer
 
-class ConvAccelerator(AcceleratorBase):
+
+class GemmAccelerator(AcceleratorBase):
     def __init__(self, name, n_stream=1, freq=200, num_pes=128*128, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000):
-        super(ConvAccelerator,self).__init__(name, n_stream, freq, num_pes, noc_bw, off_chip_bw, l1_size, l2_size)
-            
+        super(GemmAccelerator, self).__init__(name, n_stream,
+                                              freq, num_pes, noc_bw, off_chip_bw, l1_size, l2_size)
+
     def push_task_to_stream(self, idx, task: AccTask):
-        assert task.task_kind == "Conv2d"
-        super(ConvAccelerator, self).push_task_to_stream(idx, task)
+        assert task.task_kind == "Gemm"
+        super(GemmAccelerator, self).push_task_to_stream(idx, task)
 
     def evaluate_compute(self, *args):
-        key = ("conv", args)
+        key = ("gemm", args)
         if key not in AcceleratorBase.compute_cache:
-            H, W, P, Q, K, C, R, S, stride_h, stride_w = args
-            mapping_contents = self.get_mapping(
-                H, W, P, Q, K, C, R, S, stride_h, stride_w)
-            mapping_file = "conv_sample_mapping"
+            M, N, K = args
+            mapping_contents = self.get_mapping(M, N, K)
+            mapping_file = "gemm_sample_mapping"
 
             if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
                 os.remove(f"{mapping_file}.m")
