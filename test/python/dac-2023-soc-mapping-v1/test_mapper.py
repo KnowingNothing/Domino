@@ -10,7 +10,7 @@ from domino.utils import ONNXConvertor
 from domino.graph_pass import set_graph_precision, GraphPrinter, GraphVisitor
 from domino.graph_ir import Op, SubGraph, Graph, Tensor, Attribute
 from domino.base import AcceleratorBase, AccTask, AccStream, SoCBase
-from domino.accelerator import ConvAccelerator, MeshSoC, NVDLA
+from domino.accelerator import ConvAccelerator, MeshSoC, NVDLA, GemmTPU, DepthwiseShiDianNao
 from domino.program_ir import ConstInt, ConstUInt, ConstFloat, ConstString, ExprList
 import matplotlib.pyplot as plt
 from domino import global_timer
@@ -128,27 +128,31 @@ class GreedyMapper(MapperBase):
 
     def __call__(self, soc: SoCBase):
         streams = soc.get_all_streams()
-        
+        op2task = {Op.OpName.ConvOp.Conv2d: "Conv2d", Op.OpName.ConvOp.DepthwiseConv2d: "Depthwise", Op.OpName.MatrixOp.Gemm:"Gemm"}
+                
         self.g = self.cg.g.copy() 
         # an matching example 
         iter = 0
+        elapsed_time = 0
         while len(self.g.nodes):
             nodes = [node for node in self.g.nodes if not self.g.pred[node]]
-            candidates = product(streams, repeat=len(nodes))
-            print ('nodes:', nodes)
-            print ('n_candidate: ', len(streams) ** len(nodes))
+            for node in nodes:
+                opname = self.g.nodes[node]['op'].name
+            candidates = product(*[streams[op2task[self.g.nodes[node]['op'].name]] for node in nodes])
+            
             min_time = math.inf
             best_candidate: Tuple[Tuple[AcceleratorBase, int]] = tuple()
             for candidate in candidates:
                 # print (f"run candidate {i}")
                 complete_time = self.commit(soc.snapshot(), nodes, candidate, True)
-                print (f'simulating candidate: ', candidate, complete_time)
                 if min_time > complete_time:
                     min_time = complete_time
                     best_candidate = candidate 
-            self.commit(soc, nodes, best_candidate)
-            global_timer.show(f'-----------------iter{iter}----------------')
+            elapsed_time = self.commit(soc, nodes, best_candidate)
+            if self.verbose:
+                global_timer.show(f'-----------------iter{iter}----------------')
             iter += 1
+        global_timer.show(f'finished mapping with time {elapsed_time}') 
        
 '''
 A converter to transform graph ir into networkx graph
@@ -194,20 +198,15 @@ class GraphIRConverter(GraphVisitor):
         
         for id in self.g.nodes:
             node = self.g.nodes[id]
-            print(id, node)
             task = node['task']
             task.name = f'T{id}'
             task.depend_tasks = [self.g.nodes[i]['task'] for i in self.g.pred[id]]
             task.params = node['op'].get_config()
-            print (task.params)
             if node['op'].name == Op.OpName.ConvOp.Conv2d:
-                print("Conv2dOp", node['op'], type(node['op']))
                 task.task_kind = "Conv2d"
             elif node['op'].name == Op.OpName.ConvOp.DepthwiseConv2d:
-                print("DepthWise", node['op'])
-                task.task_kind = "DepthWise" 
+                task.task_kind = "Depthwise" 
             elif node['op'].name == Op.OpName.MatrixOp.Gemm:
-                print("Gemm", node['op'])
                 task.task_kind = "Gemm"
             else:
                 raise RuntimeError()
@@ -267,25 +266,20 @@ def test1():
     
 def main():
     # config_path = "new_resnet18_pareto.json"
-    # model_path = "raw_resnet18.onnx"
+    model_path = "raw_resnet18.onnx"
     # config_path = "new_mobilenetv2_pareto.json"
     # model_path = "raw_mobilenetv2.onnx"
     # config_path = "new_resnet50_pareto.json"
     # model_path = "raw_resnet50.onnx"
-    model_path = "yolov5s_640x640.simplify.onnx"
+    # model_path = "yolov5s_640x640.simplify.onnx"
     graph = get_graph(model_path)
     print(graph)
     visualize(graph)
     cg = ComputationGraph(graph, 'greedy', True)
-    accs = []
-    for i in range(2):
-        accs.append([])
-        for j in range(2):
-            acc = NVDLA(f"NVDLA({i},{j})") 
-            accs[-1].append(acc)
+    accs = [[NVDLA("NVDLA(0)"), DepthwiseShiDianNao("ShiDianNao(1)"), GemmTPU("TPU(2)")]]
     soc = MeshSoC(accs)
     cg.map(soc)
-    cg.visualize('./yolo_mapped.png')
+    cg.visualize('mobilenet')
     
 
 if __name__ == "__main__":
