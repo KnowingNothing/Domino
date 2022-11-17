@@ -4,6 +4,7 @@ import numpy as np
 from onnx.numpy_helper import to_array
 from domino.graph_ir import ConstTensor, Tensor, Attribute, Op, SubGraph, Graph
 from domino.program_ir import ConstInt, ConstUInt, ConstFloat, ConstString, ExprList
+from domino.type_system import DType
 
 
 def get_type(elem_type):
@@ -39,7 +40,7 @@ class ONNXOpConvertor(object):
 
     def convert(self, ctx, op):
         attrs = ctx._parse_attr(op.attribute)
-        inputs = [ctx.get_tensor(name) for name in op.input]
+        inputs = [ctx.get_tensor(name) for name in op.input if name != ""]
         op_name = op.op_type
 
         versions = sorted([int(x.replace("convert_v", ""))
@@ -59,9 +60,13 @@ class ONNXOpConvertor(object):
         convertor = getattr(self, convertor_name)
         outputs = convertor(ctx, op, inputs, attrs)
 
+        # print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+        # print(op)
         if outputs is not None:
             for name, out in outputs.items():
                 ctx.add_tensor(out.tensor_idx, out)
+        #         print(out.shape)
+        # print()
 
 
 class ConvConvertor(ONNXOpConvertor):
@@ -87,34 +92,42 @@ class ConvConvertor(ONNXOpConvertor):
             raise NotImplementedError("Auto_pad is not supported currently.")
 
         if len(attrs["pads"]) == 4:
-            assert attrs["pads"][0] == attrs["pads"][1]
-            assert attrs["pads"][2] == attrs["pads"][3]
+            # assert attrs["pads"][0] == attrs["pads"][1]
+            # assert attrs["pads"][2] == attrs["pads"][3]
+            # In ONNX, pad is [dim_0_beg, dim_1_beg, ..., dim_0_end, dim_1_end, ...]
+            # We want [dim_0_beg, dim_0_end, dim_1_beg, dim_1_end, ...]
             pad_values = ExprList(
-                [ConstInt(attrs["pads"][0]), ConstInt(attrs["pads"][2])])
+                [ConstInt(attrs["pads"][0]), ConstInt(attrs["pads"][2]), ConstInt(attrs["pads"][1]), ConstInt(attrs["pads"][3])])
             op_attrs["padding"] = Attribute(pad_values)
         elif len(attrs["pads"]) == 2:
             pad_values = ExprList(
-                [ConstInt(attrs["pads"][0]), ConstInt(attrs["pads"][1])])
+                [ConstInt(attrs["pads"][0]), ConstInt(attrs["pads"][0]), ConstInt(attrs["pads"][1]), ConstInt(attrs["pads"][1])])
             op_attrs["padding"] = Attribute(pad_values)
         else:
             raise ValueError(
                 f"Can't understand the padding attribute: {attrs['pads']}")
 
-        if len(attrs["strides"]) == 2:
-            strides = ExprList(
-                [ConstInt(attrs["strides"][0]), ConstInt(attrs["strides"][1])])
-            op_attrs["strides"] = Attribute(strides)
+        if "strides" in attrs:
+            if len(attrs["strides"]) == 2:
+                strides = ExprList(
+                    [ConstInt(attrs["strides"][0]), ConstInt(attrs["strides"][1])])
+                op_attrs["strides"] = Attribute(strides)
+            else:
+                raise ValueError(
+                    f"Can't understand the strides attribute: {attrs['strides']}")
         else:
-            raise ValueError(
-                f"Can't understand the strides attribute: {attrs['strides']}")
+            strides = ExprList([ConstInt(1), ConstInt(1)])
 
-        if len(attrs["dilations"]) == 2:
-            dilations = ExprList(
-                [ConstInt(attrs["dilations"][0]), ConstInt(attrs["dilations"][1])])
-            op_attrs["dilation"] = Attribute(dilations)
+        if "dilations" in attrs:
+            if len(attrs["dilations"]) == 2:
+                dilations = ExprList(
+                    [ConstInt(attrs["dilations"][0]), ConstInt(attrs["dilations"][1])])
+                op_attrs["dilation"] = Attribute(dilations)
+            else:
+                raise ValueError(
+                    f"Can't understand the dilations attribute: {attrs['dilations']}")
         else:
-            raise ValueError(
-                f"Can't understand the dilations attribute: {attrs['dilations']}")
+            dilations = ExprList([ConstInt(1), ConstInt(1)])
 
         op_attrs["use_bias"] = Attribute(ConstUInt((len(inputs) == 3)))
 
@@ -131,10 +144,12 @@ class ConvConvertor(ONNXOpConvertor):
         if op_attrs["use_bias"]:
             inputs_dict["bias"] = inputs[2]
 
-        kh = (R - 1) * attrs["dilations"][0] + 1
-        kw = (S - 1) * attrs["dilations"][1] + 1
-        P = (H + pad_values[0].value * 2 - kh) // attrs["strides"][0] + 1
-        Q = (W + pad_values[1].value * 2 - kw) // attrs["strides"][1] + 1
+        kh = (R - 1) * dilations[0].value + 1
+        kw = (S - 1) * dilations[1].value + 1
+        P = (H + pad_values[0].value +
+             pad_values[1].value - kh) // attrs["strides"][0] + 1
+        Q = (W + pad_values[2].value +
+             pad_values[3].value - kw) // attrs["strides"][1] + 1
 
         name = op.output[0]
         shape = [N, K, P, Q]
@@ -227,14 +242,16 @@ class PoolConvertor(ONNXOpConvertor):
             raise NotImplementedError("Auto_pad is not supported currently.")
 
         if len(attrs["pads"]) == 4:
-            assert attrs["pads"][0] == attrs["pads"][1]
-            assert attrs["pads"][2] == attrs["pads"][3]
+            # assert attrs["pads"][0] == attrs["pads"][1]
+            # assert attrs["pads"][2] == attrs["pads"][3]
+            # In ONNX, pad is [dim_0_beg, dim_1_beg, ..., dim_0_end, dim_1_end, ...]
+            # We want [dim_0_beg, dim_0_end, dim_1_beg, dim_1_end, ...]
             pad_values = ExprList(
-                [ConstInt(attrs["pads"][0]), ConstInt(attrs["pads"][2])])
+                [ConstInt(attrs["pads"][0]), ConstInt(attrs["pads"][2]), ConstInt(attrs["pads"][1]), ConstInt(attrs["pads"][3])])
             op_attrs["padding"] = Attribute(pad_values)
         elif len(attrs["pads"]) == 2:
             pad_values = ExprList(
-                [ConstInt(attrs["pads"][0]), ConstInt(attrs["pads"][1])])
+                [ConstInt(attrs["pads"][0]), ConstInt(attrs["pads"][0]), ConstInt(attrs["pads"][1]), ConstInt(attrs["pads"][1])])
             op_attrs["padding"] = Attribute(pad_values)
         else:
             raise ValueError(
@@ -258,8 +275,10 @@ class PoolConvertor(ONNXOpConvertor):
 
         kh = attrs["kernel_shape"][0]
         kw = attrs["kernel_shape"][1]
-        P = (H + pad_values[0].value * 2 - kh) // attrs["strides"][0] + 1
-        Q = (W + pad_values[1].value * 2 - kw) // attrs["strides"][1] + 1
+        P = (H + pad_values[0].value +
+             pad_values[1].value - kh) // attrs["strides"][0] + 1
+        Q = (W + pad_values[2].value +
+             pad_values[3].value - kw) // attrs["strides"][1] + 1
 
         assert len(op.output) == 1
         output_name = op.output[0]
@@ -669,8 +688,11 @@ class ConcatConvertor(ONNXOpConvertor):
 
 class ResizeConvertor(ONNXOpConvertor):
     def convert_v11(self, ctx, op, inputs, attrs):
-        assert len(inputs) == 3
-        data, roi, scales = inputs
+        assert len(inputs) >= 2
+        if len(inputs) == 3:
+            data, roi, scales = inputs
+        else:
+            data, scales = inputs
         assert len(scales.shape) == 1
         assert scales.shape[0] == len(data.shape)
 
@@ -701,13 +723,21 @@ class ResizeConvertor(ONNXOpConvertor):
             name=output_name,
             tensor_idx=output_name
         )
-        resize_op = Op.NamedOp(
-            Op.OpName.ScalingOp.Resize,
-            {
+
+        if len(inputs) == 3:
+            inputs_dict = {
                 "inputs": data,
                 "roi": roi,
                 "scales": scales
-            },
+            }
+        else:
+            inputs_dict = {
+                "inputs": data,
+                "scales": scales
+            }
+        resize_op = Op.NamedOp(
+            Op.OpName.ScalingOp.Resize,
+            inputs_dict,
             {
                 "output": output
             },
@@ -742,7 +772,7 @@ class ReshapeConvertor(ONNXOpConvertor):
             assert output_shape[unknown_pos] * remain_elems == total_elems
 
         assert prod(data.shape, start=1) == prod(
-            output_shape, start=1), (f"{prod(data.shape, start=1)} vs {prod(output_shape, start=1)}")
+            output_shape, start=1), (f"{op} prod({data.shape})={prod(data.shape, start=1)} vs prod({output_shape})={prod(output_shape, start=1)}")
 
         assert len(op.output) == 1
         output_name = op.output[0]
@@ -863,25 +893,159 @@ class SplitConvertor(ONNXOpConvertor):
         return split_op.outputs
 
 
+class LRNConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        data = inputs[0]
+        assert len(inputs) == 1
+        assert data.layout is None or data.layout == "NCHW"
+
+        output_names = [x for x in op.output]
+        assert len(output_names) == 1
+
+        axis = 1
+        alpha = attrs.get("alpha", 0.0001)
+        beta = attrs.get("beta", 0.75)
+        bias = attrs.get("bias", 1.0)
+        nsize = attrs.get("size")
+
+        output = Tensor(
+            data.shape,
+            data.dtype,
+            layout=data.layout,
+            name=output_names[0],
+            tensor_idx=output_names[0]
+        )
+
+        inputs_dict = {
+            "inputs": data
+        }
+
+        outputs_dict = {
+            "output": output
+        }
+
+        lrn_op = Op.NamedOp(
+            Op.OpName.ActivationOp.LRN,
+            inputs_dict,
+            outputs_dict,
+            attrs={
+                "axis": Attribute(ConstInt(axis)),
+                "alpha": Attribute(ConstFloat(alpha)),
+                "beta": Attribute(ConstFloat(beta)),
+                "bias": Attribute(ConstFloat(bias)),
+                "nsize": Attribute(ConstFloat(nsize))
+            }
+        )
+
+        return lrn_op.outputs
+
+
+class DropoutConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        assert len(inputs) == 2
+        data = inputs[0]
+        ratio = inputs[1]
+
+        output_names = [x for x in op.output]
+        assert len(output_names) == 2
+
+        output = Tensor(
+            data.shape,
+            data.dtype,
+            layout=data.layout,
+            name=output_names[0],
+            tensor_idx=output_names[0]
+        )
+
+        mask = Tensor(
+            data.shape,
+            DType.from_string("int32"),
+            layout=data.layout,
+            name=output_names[1],
+            tensor_idx=output_names[1]
+        )
+
+        inputs_dict = {
+            "inputs": data,
+            "ratio": ratio
+        }
+
+        outputs_dict = {
+            "output": output,
+            "mask": mask
+        }
+
+        drop_op = Op.NamedOp(
+            Op.OpName.ActivationOp.Dropout,
+            inputs_dict,
+            outputs_dict,
+        )
+
+        return drop_op.outputs
+
+
+class SoftmaxConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        axis = attrs.get("axis", 1)
+        assert len(inputs) == 1
+        data = inputs[0]
+        ndim = len(data.shape)
+        if axis < 0:
+            axis = ndim + axis
+
+        output_names = [x for x in op.output]
+        assert len(output_names) == 1
+
+        output = Tensor(
+            data.shape,
+            data.dtype,
+            layout=data.layout,
+            name=output_names[0],
+            tensor_idx=output_names[0]
+        )
+
+        inputs_dict = {
+            "inputs": data,
+        }
+
+        outputs_dict = {
+            "output": output,
+        }
+
+        softmax_op = Op.NamedOp(
+            Op.OpName.ReduceOp.Softmax,
+            inputs_dict,
+            outputs_dict,
+            attrs={
+                "axis": Attribute(ConstInt(axis))
+            }
+        )
+
+        return softmax_op.outputs
+
+
 CONVERT_MAP = {
-    "Conv": ConvConvertor,
-    "Relu": ReluConvertor,
-    "MaxPool": MaxPoolConvertor,
-    "AveragePool": AveragePoolConvertor,
     "Add": AddConvertor,
-    "Mul": MulConvertor,
-    "Pow": PowConvertor,
-    "GlobalAveragePool": GlobalAveragePoolConvertor,
+    "AveragePool": AveragePoolConvertor,
+    "Clip": ClipConvertor,
+    "Concat": ConcatConvertor,
+    "Constant": ConstantConvertor,
+    "Conv": ConvConvertor,
+    "Dropout": DropoutConvertor,
     "Flatten": FlattenConvertor,
     "Gemm": GemmConvertor,
-    "Constant": ConstantConvertor,
-    "Clip": ClipConvertor,
-    "Sigmoid": SigmoidConvertor,
-    "Concat": ConcatConvertor,
-    "Resize": ResizeConvertor,
+    "GlobalAveragePool": GlobalAveragePoolConvertor,
+    "LRN": LRNConvertor,
+    "MaxPool": MaxPoolConvertor,
+    "Mul": MulConvertor,
+    "Pow": PowConvertor,
+    "Relu": ReluConvertor,
     "Reshape": ReshapeConvertor,
-    "Transpose": TransposeConvertor,
+    "Resize": ResizeConvertor,
+    "Sigmoid": SigmoidConvertor,
+    "Softmax": SoftmaxConvertor,
     "Split": SplitConvertor,
+    "Transpose": TransposeConvertor,
 }
 
 
@@ -965,7 +1129,14 @@ class ONNXConvertor(object):
         for dim in info_proto.type.tensor_type.shape.dim:
             name = dim.dim_param
             value = dim.dim_value
-            assert value is not None and value > 0
+            if not (value is not None and value > 0):
+                if name == "batch_size":
+                    print(
+                        "Warning: batch size is not set in model file, we set it to 1.")
+                    value = 1
+                else:
+                    raise ValueError(
+                        f"tensor {info_proto.name} dim {name} value is {value}")
             shape_name.append(value)
             shape.append(value)
 
