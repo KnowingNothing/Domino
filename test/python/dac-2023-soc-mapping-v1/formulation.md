@@ -1,3 +1,13 @@
+## Characterize the problem 
+We have a computation graph $C(V_c,E_c)$ and accelerators $A$ also timing function $t: V_c \times A \to R$, resource functions $r_i: V_c \to R$, output volumn function $o: V_c \to R$, device constraint $M_i: V_a \to R$, communication cost function $c: A \times A \times R \to R$. 
+We want to find a placement rule $p: V_c \to A$ and a scheduling rule $s: V_c \to R$ s.t.: 
+- Resource constraint: tasks mapped onto streams of the device synchronously shared the resources;
+  - $\forall t \in R, a \in A, i, \Sigma_{v\in V_c} 1_{t\in[S(v), S(v) + t(v, p(v))]} r_i(v) < M_i(a)$
+- Dependency constraint: tasks dependency should not be voilated;
+  - $\forall (v\to u) \in E_c, s(u,p(u)) \ge s(v,p(v))+t(v,p(v))+c(p(u), p(v), o(v))$ 
+- The overall latency is optimized:
+  - $p,s = argmin_{p,s}max_v \{s(v) + t(v, p(v))\}$
+
 ## DP formulation 
 
   - The dynamic programming algorithm needs two submodules, `grouper` and `placer`. The `grouper` finds several groups, subgraphs on the frontier of the computation graph, and pack them into independent jobs. `placer` gives a placement policy of the independent jobs onto accelerators under resource constraints. Upon execution, one global synchronization is performed after each group is executed. Suppose we have these components, the dynamic programming algoritm has update function is $DP(C) = max_{g\in grouper(C)}{profile(placer(g)) + DP(C - g)}$, the boundary condition is $DP(\emptyset) = 0$. 
