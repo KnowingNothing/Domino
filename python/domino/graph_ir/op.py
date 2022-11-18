@@ -43,6 +43,8 @@ class OpName(object):
         ReLU = "ReLU"
         Clip = "Clip"
         Sigmoid = "Sigmoid"
+        LRN = "LRN"
+        Dropout = "Dropout"
 
     class PoolingOp(enum.Enum):
         AveragePool1d = "AveragePool1d"
@@ -66,6 +68,7 @@ class OpName(object):
 
     class ReduceOp(enum.Enum):
         Mean = "Mean"
+        Softmax = "Softmax"
 
     class DimOrderOp(enum.Enum):
         Transpose = "Transpose"
