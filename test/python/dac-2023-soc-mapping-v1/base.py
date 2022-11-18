@@ -110,14 +110,12 @@ class ComputationGraph:
             
         complete_time /= 100 
         pe_offset /= 100
-        print(f'(complete_time, pe_offset){(num_streams * 10, complete_time)}')
         img = Image.new("RGB", (int(complete_time), int(pe_offset)))
 
         for _, task in self.g.nodes.data('task'):
             img1 = ImageDraw.Draw(img)
             # img1.rectangle([(task.compute_start / 100, (acc2peoffset[task.acc] + task.pe_start) / 100), (task.compute_finish / 100, (acc2peoffset[task.acc] + task.pe_finish) / 100)], fill ="yellow", outline ="red")
             img1.rectangle([((acc2streamoffset[task.acc] + task.stream) * 10, task.compute_start / 100), ((acc2streamoffset[task.acc] + task.stream + 1) * 10, task.compute_finish / 100)], fill ="yellow", outline ="red")
-            print(f"{task.task_kind}{task.unique_id} to {task.acc} start at{task.compute_start}, finished at {task.compute_finish}, pe begin {task.pe_start}, pe finish {task.pe_finish}")
         for v in acc2peoffset.values():
             img1 = ImageDraw.Draw(img)
             img1.line([(0, v), (complete_time, v)], fill = 'red', width = 0)
@@ -240,10 +238,40 @@ def visualize(graph, name = 'g'):
     cmd = f'dot -Tpng tmp.gv -o {name}.png'
     os.system(cmd)
 
+def visualize_basic(graph, name = 'g'):
+    s = 'digraph G{\n'
+    node2name = lambda x: f'S{-x}' if x < 0 else f'N{x}'
+    for u,v in graph.edges:
+        s += f'{node2name(u)} -> {node2name(v)}\n'
+    s += '}\n'
+    
+    with open('tmp.gv', 'w') as f:
+        f.write(s)
+    
+    cmd = f'dot -Tpng tmp.gv -o {name}.png'
+    os.system(cmd)
+    
+def visualize_subgraph(graph, subgraphs: List[List[int]], name = 'g'):
+    s = 'digraph G{\n'
+    s += "\tnode [style=filled]\n"
+    node2name = lambda x: f'S{-x}' if x < 0 else f'N{x}'
+    for subgraph in subgraphs:
+        c = f'{hex(random.randint(0,256*256*256))}'
+        for u in subgraph:
+            s += f'{node2name(u)} [color=\"#{c}\"]\n'
+    for u,v in graph.edges:
+        s += f'{node2name(u)} -> {node2name(v)}\n'
+    s += '}\n'
+    
+    with open('tmp.gv', 'w') as f:
+        f.write(s)
+    
+    cmd = f'dot -Tpng tmp.gv -o {name}.png'
+    os.system(cmd)
+
 def get_graph(models: List[str]):
     irConverter = GraphIRConverter()
     n_node = 0
-    print("get_graph:", models)
     for model in models:
         if model == 'resnet18':
             model_path = "./graph/raw_resnet18.onnx"
@@ -261,6 +289,12 @@ def get_graph(models: List[str]):
             model_path = './graph/ssd_mobilenet_v1_10.onnx'
         elif model == 'efficientnet':
             model_path = './graph/efficientnet-lite4-11.onnx'
+        elif model == "super_resolution":
+            model_path = "./graph/super_resolution.onnx"
+        elif model == 'bert':
+            model_path = "./graph/bert-base.onnx"
+        elif model == "gpt2":
+            model_path = "./graph/gpt2-10.onnx"
         else:
             raise RuntimeError(f'unknown model {model}')
         convertor = ONNXConvertor(model_path, inference=True)

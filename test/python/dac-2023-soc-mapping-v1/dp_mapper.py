@@ -70,7 +70,7 @@ class DPMapper(MapperBase):
                                     task_time[task] = total_time
                                     time, resource_usage = self.soc.eval(
                                         (acc, self.cg.g.nodes[task]['task']), 
-                                        [(task_placement[pred][0], self.cg.g.nodes[pred]['task']) for pred in self.cg.g.pred[task] if pred not in group]) 
+                                        [(task_placement[pred][0] if pred not in group else acc, self.cg.g.nodes[pred]['task']) for pred in self.cg.g.pred[task]]) 
                                     total_time += time 
                                     max_resource_usage = max(max_resource_usage, resource_usage)
                                 configs.append((total_time, max_resource_usage))

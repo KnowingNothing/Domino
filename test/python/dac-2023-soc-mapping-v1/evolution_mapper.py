@@ -6,24 +6,25 @@ import math
 import random
 import time 
 import numpy as np
+from functools import reduce
 
 from domino.utils import ONNXConvertor
 from domino.graph_pass import set_graph_precision, GraphPrinter, GraphVisitor
 from domino.graph_ir import Op, SubGraph, Graph, Tensor, Attribute
 from domino.base import AcceleratorBase, AccTask, AccStream, SoCBase
-from domino.accelerator import ConvAccelerator, MeshSoC, NVDLA, GemmTPU, DepthwiseShiDianNao
+from domino.accelerator import ConvAccelerator, MeshSoC, NVDLA, GemmTPU, DepthwiseShiDianNao, ConvShiDianNao
 from domino.program_ir import ConstInt, ConstUInt, ConstFloat, ConstString, ExprList
 import matplotlib.pyplot as plt
 from domino import global_timer
 
-from base import GraphIRConverter, ComputationGraph, get_graph, MapperBase, visualize
+from base import GraphIRConverter, ComputationGraph, get_graph, MapperBase, visualize, visualize_basic, visualize_subgraph
 
 class GrouperBase:
     def group(self, cg: "nx.graph") -> List[List[int]]: 
         raise NotImplementedError()
 
 class PlacerBase:
-    def place(self, soc: SoCBase, acc: str, configs: List[Tuple[float, float]],) -> Tuple["Latency", Dict[AccTask, "streamid"], Dict[AccTask, "start_time"]]:
+    def place(self, soc: SoCBase, acc: str, configs: List[Tuple[float, float]],) -> Tuple["Latency", Dict[AccTask, "streamid"], Dict[AccTask, "start_time"], Dict[str, Any]]:
         raise NotImplementedError()
 
 
@@ -41,9 +42,10 @@ class Individual:
     
 class Population:
     num_generations = 10
-    size = 4
+    size = 10
     direct_heir_rate = 0.2
-    mutate_rate = 0.1
+    mutate_rate = 0.5
+    layer_mutate_rate = 0.3
     
     def __init__(self):
         self.population:List[Individual] = list()
@@ -70,79 +72,177 @@ class Population:
         for i, idv in enumerate(self.population):
             print(f'{i}: {idv}')
 class EvolutionMapper(MapperBase):
-    def __init__(self, topo_sort_alg:str, placer: PlacerBase, verbose: bool = False):
+    def __init__(self, placer: PlacerBase, verbose: bool = False):
         super(EvolutionMapper, self).__init__(verbose)
-        self.topo_sort_alg = topo_sort_alg
         self.placer = placer
-        self.max_depth = 20
+        self.max_depth = 15
+        self.max_mapping_candidate = 100
+        
+    def get_compute_time(self, accs):
+        compute_times = {}
+        for nid, op in self.cg.g.nodes.data('op'):
+            avail_accs = accs[MapperBase.op2task[op.name]]
+            compute_times[nid] = {acc: self.soc.eval_computation(self.cg.g.nodes[nid]['task'], acc) 
+                                  for acc in avail_accs}
+        return compute_times 
+
+    def get_resource_usage(self, accs):
+        resource_usages = {}
+        for nid, op in self.cg.g.nodes.data('op'):
+            avail_accs = accs[MapperBase.op2task[op.name]]
+            resource_usages[nid] = {acc: self.soc.eval_pe_usage(self.cg.g.nodes[nid]['task'], acc) 
+                                  for acc in avail_accs}
+        return resource_usages 
+    
     # dp[:idx] = max_{j}{dp[:idx-j] + self.placer(dp[idx-j:idx])}  
     def dp(self):
+        self.__cache.clear()
         self.__cache[0] = (0, 0, {}, {}, {})
         accs = self.soc.get_all_accs()
+        compute_times = self.get_compute_time(accs)
+        resource_usages = self.get_resource_usage(accs)
+        reversed_topo_order = {x:i for i,x in enumerate(self.topo_order)}
+        acc2task_kinds = self.soc.get_acc2task_kinds()
+        
         for idx in range(1, len(self.cg.g.nodes)+1):
             best_lat = math.inf
             for j in range(1, min(idx, self.max_depth)+1):
                 frontier_graph = self.cg.g.subgraph(self.topo_order[idx-j:idx]) 
                 
-                groups = [list(x) for x in  nx.weakly_connected_components(frontier_graph)]
+                groups = [sorted(list(x), key=lambda y: reversed_topo_order[y]) for x in  nx.weakly_connected_components(frontier_graph)]
+                
+                # if exist one group that no device support all ops, continue 
+                invalid = False
+                for group in groups:
+                    has_avail_acc = False
+                    for task_kinds in acc2task_kinds.values():
+                        valid = True 
+                        for nid in group:
+                            task_kind = self.cg.g.nodes[nid]['task'].task_kind
+                            if task_kind not in task_kinds: 
+                                valid = False 
+                                break 
+                        if valid: 
+                            has_avail_acc = True  
+                            break
+                    if not has_avail_acc: 
+                        invalid = True
+                        break 
+                if invalid: continue
+                
                 clock, _, task_placement, _, _ = self.__cache[idx - j]
                 # todo: consider heterogeneity when doing grouping 
-                candidates = product(*[accs[MapperBase.op2task[self.cg.g.nodes[group[0]]['op'].name]] for group in groups])
-                n_avail_cand = 0
-                for cand in candidates:
-                    # special judgement for heterogeneity mapping
-                    valid = True
-                    for group, acc in zip(groups, cand):
-                        for task in group:
-                            if acc not in accs[MapperBase.op2task[self.cg.g.nodes[task]['op'].name]]:
-                                valid = False 
-                    if not valid: continue 
-                    n_avail_cand += 1
-                    
-                    
+                candidates = list(product(*[accs[MapperBase.op2task[self.cg.g.nodes[group[0]]['op'].name]] for group in groups]))
+                
+                group_times = [] # List[List[]]
+                group_pe_usage = []
+                for group in groups:
+                    acc_times = {}
+                    acc_pe_usage = {}
+                    for acc in accs[MapperBase.op2task[self.cg.g.nodes[group[0]]['op'].name]]:
+                        start_times = [0]
+                        for nid in group:
+                            compute_time = compute_times[nid][acc]
+                            for pred in self.cg.g.pred[nid]:
+                                valid = pred in group or pred in task_placement
+                                if not valid:
+                                    print ("task_placement: ", task_placement)
+                                    print ("__cache: ", self.__cache)
+                                    print ("pred, ", pred, 'nid', nid, 'group', group)
+                                    print ('layer', self.topo_order[idx-j:idx])
+                                    raise RuntimeError()
+                            comm_time = self.soc.eval_communication(
+                                    (acc, self.cg.g.nodes[nid]['task']), 
+                                    [(task_placement[pred][0] if pred not in group else acc, self.cg.g.nodes[pred]['task']) for pred in self.cg.g.pred[nid]]) 
+                            start_times.append(start_times[-1] + (compute_time + comm_time))
+                        acc_times[acc] = start_times
+                        acc_pe_usage[acc] = max(resource_usages[nid][acc] for nid in group)
+                    group_times.append(acc_times)
+                    group_pe_usage.append(acc_pe_usage)
+                
+                for cand in random.sample(candidates, min(len(candidates), self.max_mapping_candidate)):     
                     acc2groups = {}
-                    for group, acc in zip(groups, cand):                        
+                    for gid, acc in enumerate(cand):                        
                         if acc not in acc2groups:
                             acc2groups[acc] = []
-                        acc2groups[acc].append(group)
+                        acc2groups[acc].append(gid)
                         
                     elapsed_time = 0
                     curr_task_placement = {}
                     curr_task_timing = {}
                     curr_hardware_occupancy = {}
+
                     for acc, acc_groups in acc2groups.items():
-                        configs = [] # List[Tuple[time, resource]]
-                        task_time = {}
-                        for gid, group in enumerate(acc_groups):
-                            group_graph = frontier_graph.subgraph(group)
-                            total_time = 0
-                            max_resource_usage = 0
-                            for task in nx.topological_sort(group_graph):
-                                task_time[task] = total_time
-                                time, resource_usage = self.soc.eval(
-                                    (acc, self.cg.g.nodes[task]['task']), 
-                                    [(task_placement[pred][0], self.cg.g.nodes[pred]['task']) for pred in self.cg.g.pred[task] if pred not in group]) 
-                                total_time += time 
-                                max_resource_usage = max(max_resource_usage, resource_usage)
-                            configs.append((total_time, max_resource_usage))
-                        group_elapsed_time, placement, timing, attrs = self.placer.place(self.soc, acc, configs)
+                        group_elapsed_time, placement, timing, attrs = self.placer.place(
+                            self.soc, acc, [(group_times[gid][acc][-1], group_pe_usage[gid][acc]) for gid in acc_groups])
+                        
                         elapsed_time = max(group_elapsed_time, elapsed_time)
+                        
+                        if elapsed_time + clock > best_lat: break 
+                        
                         curr_hardware_occupancy[acc] = attrs['occupancy']
-                        for i, group in enumerate(acc_groups):
-                            for task in group:
-                                curr_task_placement[task] = (acc, placement[i]) 
-                                curr_task_timing[task] = clock + timing[i] + task_time[task]
+                        for i, gid in enumerate(acc_groups):
+                            for ii, nid in enumerate(groups[gid]):
+                                curr_task_placement[nid] = (acc, placement[i]) 
+                                curr_task_timing[nid] = clock + timing[i] + group_times[gid][acc][ii]
+                                
                     if best_lat > elapsed_time + clock:
                         best_lat = elapsed_time + clock
-                        best_cand = (elapsed_time + clock, j, curr_task_placement, curr_task_timing, curr_hardware_occupancy)
-
+                        best_cand = (best_lat, j, curr_task_placement, curr_task_timing, curr_hardware_occupancy)
             assert best_lat < math.inf
-                        
             best_cand[2].update(self.__cache[idx - best_cand[1]][2])
+            for j in self.topo_order[:idx]:
+                assert j in best_cand[2]
             self.__cache[idx] = best_cand
                 
         return self.__cache[len(self.cg.g.nodes)]
    
+    def topo_check(self, topo_order):
+        invalid = False
+        visited = set()
+        for nid in topo_order:
+            for pred in self.cg.g.pred[nid]:
+                if not pred in visited: 
+                    print (f"{pred}->{nid} violation")
+                    invalid = True
+            visited.add(nid)
+        return not invalid 
+
+    def check_idv(self, idv):
+        if not self.topo_check(idv.topo_order):
+            return False 
+        nodes = set()
+        for layer in idv.layers:
+            for i in layer[1]:
+                nodes.add(i)
+        if not len(nodes) == len(self.cg.g.nodes):
+            print("layer error")
+            return False
+        return True
+   
+    def fuzz_test(self, soc):
+        self.soc = soc
+        self.closure_graph = nx.transitive_closure(self.cg.g)
+        
+        
+        for name, alg in [('bfs', self.bfs), ('bfs_reversed', self.bfs_reversed), ('dfs', self.dfs), ('dfs_reversed', self.dfs_reversed)]:
+            for i in range(200):
+                topo_order = alg(self.cg.g)
+                assert self.topo_check(topo_order)
+        idvs = []
+        for i in range(10):        
+            idvs.append(self.eval(self.topo_sort(self.cg.g)))
+            assert self.check_idv(idvs[-1])
+        for i in range(10):
+            idvs[i] = self.mutate(idvs[i])
+            assert self.check_idv(idvs[i])
+        for i in range(10):
+            x = random.randint(0, 9)
+            y = random.randint(0, 9)
+            idvs[i] = self.crossover(idvs[x],idvs[y])
+            assert self.check_idv(idvs[i])
+        print('test passed!')
+    
     def bfs(self, graph):
         L = []
         num_preds = {i:len(graph.pred[i]) for i in graph.nodes}
@@ -222,9 +322,7 @@ class EvolutionMapper(MapperBase):
         idv = self.evolve_search()
         
         self.topo_order = idv.topo_order
-        
-        print (self.topo_order)
-        
+                
         self.__cache = {} # Dict[Tuple[Node], Tuple[latency, Dict[task, (Accelerator, Stream)], Dict[task, float]]]]
         
         self.dp()
@@ -240,7 +338,6 @@ class EvolutionMapper(MapperBase):
         for r, task_placement, task_timing in groups:
             group = self.topo_order[r[0]:r[1]]
             group.sort(key=lambda t: task_timing[t])
-            print(group)
             complete_time = self.commit(soc, group, [task_placement[i] for i in group])
         
         print(f"complete at {complete_time}, estimated {self.__cache[len(self.cg.g.nodes)][0]}")
@@ -284,6 +381,15 @@ class EvolutionMapper(MapperBase):
         fake_topo_order = self.topo_sort(graph)    
         topo_order = sum([fixed[-i-1] if i < 0 else [i] for i in fake_topo_order], [])
         
+        if not self.topo_check(topo_order):
+            visualize_basic(graph, 'error')
+            visualize_subgraph(self.cg.g, fixed, 'error_raw')
+            for i, l in enumerate(fixed):
+                print (-(i+1), ":", l)
+            for nid in self.cg.g.nodes:
+                print(nid, ':', self.cg.g.pred[nid])
+            assert False
+            
         return self.eval(topo_order)
     
     def crossover(self, x: Individual, y: Individual):
@@ -322,10 +428,9 @@ class EvolutionMapper(MapperBase):
         return self.gen_idv_with_fixed(fixed)
         
     def mutate(self, x: Individual):
-        print(f'x is {x}', type(x))
         fixed = []
         for layer in x.layers:
-            if random.random() > Population.mutate_rate: 
+            if random.random() > Population.layer_mutate_rate: 
                 fixed.append(layer[1])
         return self.gen_idv_with_fixed(fixed)
     
@@ -346,16 +451,21 @@ class EvolutionMapper(MapperBase):
                     x, y = pop.select(2)
                     offspring = self.crossover(x,y)
                 print (f'offspring:{offspring}')
-                offspring = self.mutate(offspring)
+                if random.random() < Population.mutate_rate:
+                    offspring = self.mutate(offspring)
                 new_pop.add(offspring)
             pop = new_pop 
             
         return pop.select(best = True)
     
 class SimplePlacer(PlacerBase):
+    # stream_limit limits the maximum stream used, 20 is a arbitriry large number
+    def __init__(self, stream_limit = 20):
+        self.stream_limit = stream_limit 
+    
     def place(self, soc: SoCBase, acc: "accelerator name", configs: List[Tuple["lat", "resource"]]):
         limits = soc.get_resource_limit(acc)
-        stream_limit = limits['num_stream']
+        stream_limit = min(limits['num_stream'], self.stream_limit)
         resource_limit = limits['num_pes']
         
         ids = sorted(range(len(configs)), key=lambda x: configs[x][0])
@@ -367,51 +477,48 @@ class SimplePlacer(PlacerBase):
         total_lat = 0
         cur_pe_usage = 0
         i = 0
-        stream_id = 0
+        stream_id = -1
         attrs = {'n_increase': 0}
         for i in range(len(ids)):
             id = ids[i]
             pe_usage = configs[id][1]
-            if cur_pe_usage + pe_usage > resource_limit:
+            if cur_pe_usage + pe_usage > resource_limit or stream_id + 1 >= stream_limit:
                 min_lat += configs[ids[i-1]][0]
                 cur_pe_usage = 0
                 stream_id = 0
                 attrs['n_increase'] += 1
             else:
                 cur_pe_usage += pe_usage
+                stream_id += 1
             id2stream[id] = stream_id 
             id2time[id] = min_lat 
-            stream_id = (stream_id + 1) % stream_limit
             if i == len(ids) - 1:
                 total_lat = min_lat + configs[id][0]
         attrs['occupancy'] = sum([x*y for x, y in configs])/ (resource_limit * total_lat)
         return total_lat, id2stream, id2time, attrs 
 
-def main():
+def main(): 
     models = ['resnet18', 'resnet50', 'yolo', 'resnet50', 'resnet50']
     graph = get_graph(models)
     print(graph)
     visualize(graph)
     placer = SimplePlacer()
-    mapper = EvolutionMapper('bfs', placer)
+    mapper = EvolutionMapper(placer)
     cg = ComputationGraph(graph, mapper)
     accs = [[NVDLA("NVDLA(0)", 2), DepthwiseShiDianNao("ShiDianNao(1)"), GemmTPU("GemmTPU")]]
-    for acc_list in accs:
-        for acc in acc_list:
-            print ("acc is", acc.name, acc.num_streams())
     soc = MeshSoC(accs)
-    complete_time = cg.map(soc)
-    soc.report()
-    cg.visualize_packing(soc, complete_time)
-    cg.visualize('_'.join(models))
-    print("compute lowerbound is ", cg.lower_bound(soc))
-    print("compute uses ", complete_time)
-
-    # find (x, y)
-
+    mapper.fuzz_test(soc)
+    # complete_time = cg.map(soc)
+    # soc.report()
+    # cg.visualize_packing(soc, complete_time)
+    # cg.visualize('_'.join(models))
+    # print("compute lowerbound is ", cg.lower_bound(soc))
+    # print("compute uses ", complete_time)
+    
 if __name__ == "__main__":
     random.seed(1)
     os.system("mkdir -p .cache")
+    os.system("mkdir -p pics")
     AcceleratorBase.load_cache()
     main()
     AcceleratorBase.store_cache()
