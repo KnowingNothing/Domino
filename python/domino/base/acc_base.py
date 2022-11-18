@@ -2,7 +2,7 @@ import os
 import copy
 import pickle as pkl
 import networkx as nx
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 from collections import OrderedDict
 from .. import global_timer
 
@@ -18,6 +18,13 @@ class AccTask(object):
         self.task_kind = task_kind
         self.params = params
         self.depend_tasks = depend_tasks  # the parent tasks of this task
+        # for visualization
+        self.compute_start = 0
+        self.compute_finish= 0
+        self.pe_start = 0 
+        self.pe_finish = 0
+        self.acc = None
+        self.stream = 0
 
     def get_params(self):
         if self.task_kind == "Conv2d":
@@ -25,6 +32,14 @@ class AccTask(object):
             stride_h = self.params["stride_h"]
             stride_w = self.params["stride_w"]
             return (H, W, P, Q, K, C, R, S, stride_h, stride_w)
+        elif self.task_kind == 'Gemm':
+            M,N,K = [self.params[x] for x in 'MNK']
+            return (M,N,K)
+        elif self.task_kind == 'Depthwise':
+            H, W, P, Q, K, M, R, S = [self.params[x] for x in 'HWPQKMRS']
+            stride_h = self.params['stride_h']
+            stride_w = self.params['stride_w']
+            return (H,W,P,Q,K,M,R,S,stride_h,stride_w)
         else:
             raise NotImplementedError()
 
@@ -36,9 +51,15 @@ class AccTask(object):
         if self.task_kind == "Conv2d":
             H, W, P, Q, K, C, R, S = [self.params[x] for x in "HWPQKCRS"]
             return P * Q * K
+        elif self.task_kind == 'Gemm':
+            M,N = [self.params[x] for x in 'MN']
+            return M*N 
+        elif self.task_kind == 'Depthwise':
+            K,P,Q = [self.params[x] for x in 'KPQ']
+            return K*P*Q
         else:
             raise NotImplementedError()
-
+        
     def __hash__(self) -> int:
         return hash((self.name, self.task_kind, tuple(self.params)))
 
@@ -55,6 +76,7 @@ class AccStream(object):
         self._stream = []
         self._to_commit = []
         self._elapsed_time = 0
+        self.logs = []
 
     def __getitem__(self, idx):
         return self._stream[idx]
@@ -72,6 +94,7 @@ class AccStream(object):
     def retire(self, task, elapsed_time):
         assert len(self._to_commit) > 0
         assert task == self._to_commit[-1], f"stream: {self.idx}: {task} vs {self._to_commit[-1]}"
+        self.logs.append([task, self._elapsed_time, elapsed_time])
         self._to_commit = self._to_commit[:-1]
         self._elapsed_time += elapsed_time
         return self._elapsed_time
@@ -97,12 +120,18 @@ class AccStream(object):
     def prepare_to_commit(self):
         self._to_commit.append(self.head())
         self._stream = self._stream[1:]
+        
+    def report(self):
+        occupation = sum([x[2] for x in self.logs]) / self._elapsed_time
+        print (f"\tstream {self.idx}: {len(self.logs)} task, {occupation} occupied")
 
 
 class AcceleratorBase(object):
 
-    def __init__(self, name, n_stream, freq=200, num_pes=65536, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000) -> None:
+    def __init__(self, name, n_stream, supported_task, freq=200, num_pes=65536, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000) -> None:
+        print (f"create {name} with {n_stream} streams")
         self.name = name
+        self.supported_task = supported_task
         self.freq = freq  # Hz
         self.num_pes = num_pes
         self.noc_bw = noc_bw  # byte/cycle
@@ -114,7 +143,7 @@ class AcceleratorBase(object):
         self.streams[self.unique_stream_id] = AccStream(self.unique_stream_id)
         self.board = {}  # record mapping task to stream idx
         self.topo_id = (0)
-        for _ in range(n_stream):
+        for _ in range(n_stream - 1):
             self.add_new_stream()
 
     def add_new_stream(self):
@@ -181,6 +210,8 @@ class AcceleratorBase(object):
             nonlocal phase
             nonlocal cur_pe_usage
             sync_time = 0
+            
+            pe_offset = 0
             for idx, task in phase.items():
                 stream = self.get_stream(idx)
                 task_params = task.get_params()
@@ -188,8 +219,16 @@ class AcceleratorBase(object):
                 compute_time_cost = self.evaluate_compute(*task_params)
                 sync_time = max(sync_time, stream.retire(
                     task, fetch_data_cost + compute_time_cost))
+                
+                task.pe_start = pe_offset 
+                pe_offset += self.spatial_used_pes(*task.get_params())
+                task.pe_finish = pe_offset 
+                task.compute_start = stream._elapsed_time 
+                task.compute_finish = task.compute_start + fetch_data_cost + compute_time_cost 
+                task.acc = self.name
+                task.stream = idx
             for idx, task in phase.items():
-                self.get_stream(idx)._elapsed_time = sync_time
+                self.get_stream(idx)._elapsed_time = sync_time    
             phase = {}
             cur_pe_usage = 0
             global_timer.stop('actual commit')
@@ -247,6 +286,10 @@ class AcceleratorBase(object):
             with open(file, 'wb') as f:
                 pkl.dump(AcceleratorBase.compute_cache, f)
 
+    def report(self):
+        print(f"{self.name}:")
+        for stream_id in range(self.num_streams()):
+            self.get_stream(stream_id).report()
 
 class SoCBase(object):
     def __init__(self, accelerator_graph: nx.DiGraph) -> None:
@@ -274,10 +317,13 @@ class SoCBase(object):
         self.accelerator_graph.nodes[acc]['acc'].push_task_to_stream(
             stream_id, task)
 
-    def get_all_streams(self):
-        ret = []
+    def get_all_streams(self) -> Dict[str, List[Tuple[str, str]]]:
+        ret = {}
         for name, acc in self.accelerator_graph.nodes.data('acc'):
-            ret += [(name, i) for i in range(acc.num_streams())]
+            for task_kind in acc.supported_task:
+                if task_kind not in ret:
+                    ret[task_kind] = []
+                ret[task_kind] += [(name, i) for i in range(acc.num_streams())]
         return ret
 
     def commit_all_tasks(self):
@@ -303,3 +349,37 @@ class SoCBase(object):
 
     def snapshot(self):
         return copy.deepcopy(self)
+
+    def eval(self, 
+        curr_task: Tuple[AccTask, "AcceleratorName"], 
+        input_tasks: List[Tuple[AccTask, "AcceleratorName"]]
+    ):
+        acc_name, task  = curr_task
+        acc = self.accelerator_graph.nodes[acc_name]['acc']
+        params = task.get_params()
+        
+        fetch_data_cost = max(
+            task_from.get_output_data_volume() / 1e9 / self.accelerator_graph[acc_from][acc_name]['bandwidth']
+            for acc_from, task_from in input_tasks
+        ) if len(input_tasks) else 0
+        
+        compute_time_cost = acc.evaluate_compute(*params)
+        
+        return fetch_data_cost + compute_time_cost, acc.spatial_used_pes(*params)
+
+    def get_all_accs(self):
+        ret = {}
+        for name, acc in self.accelerator_graph.nodes.data('acc'):
+            for task_kind in acc.supported_task:
+                if task_kind not in ret:
+                    ret[task_kind] = []
+                ret[task_kind].append(acc.name)
+        return ret
+    
+    def report(self):
+        for _, acc in self.accelerator_graph.nodes.data('acc'):
+            acc.report()
+            
+    def get_resource_limit(self, acc: str):
+        acc = self.accelerator_graph.nodes[acc]['acc']
+        return {"num_stream": acc.num_streams(), 'num_pes': acc.num_pes}

@@ -229,7 +229,7 @@ class GraphIRConverter(GraphVisitor):
 def visualize(graph, name = 'g'):
     s = 'digraph G{\n'
     for u,op in graph.nodes.data('op'):
-        s += f'node{u} [label=\"{op.name}\"]\n'
+        s += f'node{u} [label=\"{u} {op.name}\"]\n'
     for u,v in graph.edges:
         s += f'node{u} -> node{v}\n'
     s += '}\n'
@@ -243,15 +243,24 @@ def visualize(graph, name = 'g'):
 def get_graph(models: List[str]):
     irConverter = GraphIRConverter()
     n_node = 0
+    print("get_graph:", models)
     for model in models:
         if model == 'resnet18':
-            model_path = "raw_resnet18.onnx"
+            model_path = "./graph/raw_resnet18.onnx"
         elif model == "mobilenet":
-            model_path = "raw_mobilenetv2.onnx"
+            model_path = "./graph/raw_mobilenetv2.onnx"
         elif model == "resnet50":
-            model_path = "raw_resnet50.onnx"
+            model_path = "./graph/raw_resnet50.onnx"
         elif model == "yolo": 
-            model_path = "yolov5s_640x640.simplify.onnx"
+            model_path = "./graph/yolov5s_640x640.simplify.onnx"
+        elif model == "GoogLeNet":
+            model_path = "./graph/googlenet-12.onnx"
+        elif model == "Unet":
+            model_path = './graph/unet_13_256.onnx'
+        elif model == "SSD-M":
+            model_path = './graph/ssd_mobilenet_v1_10.onnx'
+        elif model == 'efficientnet':
+            model_path = './graph/efficientnet-lite4-11.onnx'
         else:
             raise RuntimeError(f'unknown model {model}')
         convertor = ONNXConvertor(model_path, inference=True)

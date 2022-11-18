@@ -9,7 +9,7 @@ from .. import global_timer
 
 class GemmAccelerator(AcceleratorBase):
     def __init__(self, name, n_stream=1, freq=200, num_pes=128*128, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000):
-        super(GemmAccelerator, self).__init__(name, n_stream,
+        super(GemmAccelerator, self).__init__(name, n_stream, ['Gemm'],
                                               freq, num_pes, noc_bw, off_chip_bw, l1_size, l2_size)
 
     def push_task_to_stream(self, idx, task: AccTask):

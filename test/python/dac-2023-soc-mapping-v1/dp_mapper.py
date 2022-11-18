@@ -48,7 +48,6 @@ class DPMapper(MapperBase):
                     clock, _, task_placement, _ = self.dp(remain_graph)
                     # todo: consider heterogeneity when doing grouping 
                     candidates = product(*[accs[MapperBase.op2task[self.cg.g.nodes[group[0]]['op'].name]] for group in groups])    
-                    
                     for cand in candidates:
                         
                         acc2groups = {}
@@ -60,10 +59,10 @@ class DPMapper(MapperBase):
                         elapsed_time = 0
                         curr_task_placement = {}
                         curr_task_timing = {}
-                        for acc, groups in acc2groups.items():
+                        for acc, acc_groups in acc2groups.items():
                             configs = [] # List[Tuple[time, resource]]
                             task_time = {}
-                            for gid, group in enumerate(groups):
+                            for gid, group in enumerate(acc_groups):
                                 group_graph = frontier_graph.subgraph(group)
                                 total_time = 0
                                 max_resource_usage = 0
@@ -78,11 +77,12 @@ class DPMapper(MapperBase):
                             # placement: List[stream_id], timing: List[float]
                             group_elapsed_time, placement, timing = self.placer.place(self.soc, acc, configs)
                             elapsed_time = max(group_elapsed_time, elapsed_time)
-                            for i, group in enumerate(groups):
+                            for i, group in enumerate(acc_groups):
                                 for task in group:
                                     curr_task_placement[task] = (acc, placement[i]) 
                                     curr_task_timing[task] = clock + timing[i] + task_time[task]
-
+                        
+                        elapsed_time += clock 
                         if best_lat > elapsed_time:
                             best_lat = elapsed_time
                             best_cand = (elapsed_time, frontier, curr_task_placement, curr_task_timing)
@@ -157,16 +157,19 @@ def main():
     visualize(graph)
     grouper = SimpleGrouper()
     placer = SimplePlacer()
-    mapper = DPMapper(grouper, placer, True)
-    cg = ComputationGraph(graph, mapper, True)
-    accs = [[NVDLA("NVDLA(0)"), DepthwiseShiDianNao("ShiDianNao(1)"), NVDLA("NVDLA(1)")]]
+    mapper = DPMapper(grouper, placer)
+    cg = ComputationGraph(graph, mapper)
+    accs = [[NVDLA("NVDLA(0)", 2), DepthwiseShiDianNao("ShiDianNao(1)"), GemmTPU("GemmTPU")]]
+    for acc_list in accs:
+        for acc in acc_list:
+            print ("acc is", acc.name, acc.num_streams())
     soc = MeshSoC(accs)
     complete_time = cg.map(soc)
     soc.report()
     cg.visualize_packing(soc, complete_time)
     cg.visualize('_'.join(models))
     print("compute lowerbound is ", cg.lower_bound(soc))
-
+    print(f"compute uses {complete_time} ")
     # find (x, y)
 if __name__ == "__main__":
     main()

@@ -133,7 +133,6 @@ class NamedOp(OpBase):
         # check attrs
         if attrs is not None:
             for k, v in attrs.items():
-                print(type(v))
                 assert isinstance(v, Attribute)
 
     def __str__(self):
@@ -144,7 +143,6 @@ class NamedOp(OpBase):
 
     def get_config(self) -> Dict[str, Any]:
         if self.name == OpName.ConvOp.Conv2d:
-            print (self.inputs.keys())
             n,c,h,w = self.inputs['inputs'].shape 
             k,C,r,s = self.inputs['weight'].shape 
             N,K,p,q =self.outputs['output'].shape 
@@ -152,10 +150,22 @@ class NamedOp(OpBase):
             assert K == k 
             assert c == C
             strides = self.attrs['strides'].value
-            print(type(strides))
             return {'N': n, 'H':h, 'W': w, 'P': p, 'Q': q, 'K': k, 'C': c, 'R':r, 'S':s, 'stride_h': strides[0].value, 'stride_w': strides[1].value}
-        else:
-            print(self.name)
+        elif self.name == OpName.MatrixOp.Gemm:
+            m,k = self.inputs['inputs'].shape 
+            K,n = self.inputs['weight'].shape 
+            M,N = self.outputs['output'].shape 
+            return {'M': m, 'N': n, 'K': k}
+        elif self.name == OpName.ConvOp.DepthwiseConv2d:
+            n,c,h,w=self.inputs['inputs'].shape 
+            C,m,r,s=self.inputs['weight'].shape 
+            N,k,p,q=self.outputs['output'].shape 
+            assert n == N 
+            assert c == C 
+            assert c*m == k
+            strides = self.attrs['strides'].value
+            return {'N':n, 'H':h, 'W': w, 'P':p, 'Q':q, 'K':k, 'M': m, 'R': r, 'S': s, 'stride_h': strides[0].value, 'stride_w': strides[1].value}
+        else: 
             raise NotImplementedError()
 
 GeneralInt = Union[int, ConstInt]

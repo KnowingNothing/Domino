@@ -40,3 +40,39 @@ We want to find a placement rule $p: V_c \to A$ and a scheduling rule $s: V_c \t
       placement[box] = (resource_usage, time)
     return time 
   ```
+
+| Model | S1 | S2 | S3 | S4 | S5 | S6|
+| - | - | - | - | - | - | - | 
+|Resnet50|1 |  | |1 | | | 
+|GoogLeNet| |  | | 1| | | 
+|Unet| |  | | | | | 
+|ModelNetV2|1 |  | | | | | 
+|BR-Q Handpose| |  | | | | | 
+|Focal Length DepthNet| |  | | | | | 
+|SSD-Resnet34| |  | | 1| | | 
+|SSD-MobileNetV1| |  | | | | | 
+|GNMT| |  | |1 | | | 
+|YoLoV3| |  | |1 | | | 
+|EffitientNet-B0| |  | | | | | 
+|MobileNet-v1| |  | | | | | 
+|Tiny YOLO| |  | | | | | 
+|Shufflenet|1 |  | | | | | 
+|GPT2| | 1 | | | | | 
+|MobileBert| | 1 | | | | | 
+|Transformer XL| | 1 | | | | | 
+|DLRM| |  |1 | | | | 
+|WideDeep| | 1 | | | | | 
+|NCF| |  | 1 | | | | 
+
+
+# Experiments 
+1. SoC 
+  1. 2 conv (heterogeneous); 1 depthwise(fixed); 1 GEMM(fixed)
+  2. 4 conv; 3 depthwise; 1 GEMM
+2. workloads
+  1. vision: resnet50; mobilenetV2; GoogleNet;
+  2. NLP: ViT, Bert, Transformer(Encoder), GPT-2();
+  3. Mixed: GoogleNet; yoloV5; Bert
+3. Baseline:
+  1. H2H: one stream; greedy mapping; 
+  2. Megama: one stream GA; 
