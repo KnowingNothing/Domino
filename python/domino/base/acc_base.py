@@ -214,13 +214,14 @@ class AcceleratorBase(object):
             sync_time = 0
 
             pe_offset = 0
+            max_power = 0
             for idx, task in phase.items():
                 stream = self.get_stream(idx)
                 task_params = task.get_params()
                 fetch_data_cost = self.evaluate_fetch_data(task, soc)
-                compute_time_cost, energy_nJ = self.evaluate_compute(
+                compute_time_cost, power = self.evaluate_compute(
                     *task_params)
-                self.total_energy += energy_nJ
+                max_power = max(max_power, power)
                 sync_time = max(sync_time, stream.retire(
                     task, fetch_data_cost + compute_time_cost))
 
@@ -231,6 +232,7 @@ class AcceleratorBase(object):
                 task.compute_finish = task.compute_start + fetch_data_cost + compute_time_cost
                 task.acc = self.name
                 task.stream = idx
+            self.total_energy += sync_time * max_power
             for idx, task in phase.items():
                 self.get_stream(idx)._elapsed_time = sync_time
             phase = {}

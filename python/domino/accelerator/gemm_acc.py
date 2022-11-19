@@ -55,6 +55,6 @@ class GemmAccelerator(AcceleratorBase):
 
             if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
                 os.remove(f"{mapping_file}.m")
-            AcceleratorBase.compute_cache[key] = (batches * results.runtime[0] / self.freq, batches * results.energy[0])
+            AcceleratorBase.compute_cache[key] = (batches * results.runtime[0] / self.freq, results.power[0])
         ret = AcceleratorBase.compute_cache[key]
         return ret
