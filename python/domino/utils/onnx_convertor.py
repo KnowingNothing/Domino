@@ -329,26 +329,59 @@ class ElementwiseConvertor(ONNXOpConvertor):
         lhs = inputs[0]
         rhs = inputs[1]
         # TODO: how to support broadcast?
+        assert lhs.dtype == rhs.dtype
         if len(rhs.shape) > 0:
-            assert lhs.shape == rhs.shape, (
-                f"\n{op}: {op_name} operand shapes mismatch: {lhs.shape} vs {rhs.shape}")
-            assert lhs.dtype == rhs.dtype
-            if lhs.layout is None:
-                lhs.layout = rhs.layout
-            elif rhs.layout is None:
-                rhs.layout = lhs.layout
+            # assert lhs.shape == rhs.shape, (
+            #     f"\n{op}: {op_name} operand shapes mismatch: {lhs.shape} vs {rhs.shape}")
+            if lhs.shape == rhs.shape:
+                if lhs.layout is None:
+                    lhs.layout = rhs.layout
+                elif rhs.layout is None:
+                    rhs.layout = lhs.layout
+                else:
+                    assert lhs.layout == rhs.layout
+                output_shape = lhs.shape
+                output_layout = lhs.layout
             else:
-                assert lhs.layout == rhs.layout
+                op_name = Op.OpName.elementwise_to_broadcast_op(op_name)
+                output_shape = []
+                output_layout = None
+                ldim = len(lhs.shape)
+                rdim = len(rhs.shape)
+                i = ldim - 1
+                j = rdim - 1
+                while i >= 0 and j >= 0:
+                    if lhs.shape[i] == rhs.shape[j]:
+                        output_shape.append(lhs.shape[i])
+                    elif lhs.shape[i] == 1:
+                        output_shape.append(rhs.shape[j])
+                    elif rhs.shape[j] == 1:
+                        output_shape.append(lhs.shape[i])
+                    else:
+                        raise ValueError(
+                            f"Can't broadcast the shape for {op_name}: {lhs.shape} vs {rhs.shape}")
+                    i -= 1
+                    j -= 1
+                while i >= 0:
+                    output_shape.append(lhs.shape[i])
+                    i -= 1
+                while j >= 0:
+                    output_shape.append(rhs.shape[j])
+                    j -= 1
+                output_shape = list(reversed(output_shape))
         else:
             # rhs.shape = 0, scalar
+            output_shape = lhs.shape
+            output_layout = lhs.layout
+
             op_name = Op.OpName.elementwise_to_tensor_scalar_op(op_name)
 
         assert len(op.output) == 1
         output_name = op.output[0]
         output = Tensor(
-            lhs.shape,
+            output_shape,
             lhs.dtype,
-            layout=lhs.layout,
+            layout=output_layout,
             name=output_name,
             tensor_idx=output_name
         )
@@ -522,7 +555,7 @@ class ConstantConvertor(ONNXOpConvertor):
             np_value = ctx.parse_data(value)
         dtype = str(np_value.dtype)
         output = ConstTensor(
-            [],
+            np_value.shape,
             dtype,
             np_value,
             layout=None,
@@ -1024,6 +1057,245 @@ class SoftmaxConvertor(ONNXOpConvertor):
         return softmax_op.outputs
 
 
+class IdentityConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        assert len(inputs) == 1
+        data = inputs[0]
+
+        output_names = [x for x in op.output]
+        assert len(output_names) == 1
+
+        output = ConstTensor(
+            data.shape,
+            data.dtype,
+            data.value,
+            layout=data.layout,
+            name=output_names[0],
+            tensor_idx=output_names[0]
+        )
+
+        inputs_dict = {
+            "weight": data,
+        }
+
+        outputs_dict = {
+            "output": output,
+        }
+
+        id_op = Op.NamedOp(
+            Op.OpName.SourceOp.Identity,
+            inputs_dict,
+            outputs_dict,
+        )
+
+        return id_op.outputs
+
+
+class ReduceMeanConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        assert len(inputs) == 1
+        data = inputs[0]
+        ndim = len(data.shape)
+
+        output_names = [x for x in op.output]
+        assert len(output_names) == 1
+
+        axes = attrs.get("axes", list(range(ndim)))
+        if isinstance(axes, int):
+            axes = [axes]
+        axes = [x + ndim if x < 0 else x for x in axes]
+
+        keepdims = attrs.get("keepdims", 1)
+        output_shape = []
+        for i, v in enumerate(data.shape):
+            if i in axes:
+                if keepdims:
+                    output_shape.append(1)
+            else:
+                output_shape.append(v)
+
+        output = Tensor(
+            output_shape,
+            data.dtype,
+            layout=data.layout if keepdims else None,
+            name=output_names[0],
+            tensor_idx=output_names[0]
+        )
+
+        inputs_dict = {
+            "inputs": data,
+        }
+
+        outputs_dict = {
+            "output": output,
+        }
+
+        mean_op = Op.NamedOp(
+            Op.OpName.ReduceOp.ReduceMean,
+            inputs_dict,
+            outputs_dict,
+            attrs={
+                "axes": Attribute(ExprList([ConstInt(x) for x in axes])),
+                "keepdims": Attribute(ConstInt(keepdims))
+            }
+        )
+
+        return mean_op.outputs
+
+
+class ShapeConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        assert len(inputs) == 1
+        data = inputs[0]
+
+        output_names = [x for x in op.output]
+        assert len(output_names) == 1
+
+        end = attrs.get("end", len(data.shape))
+        start = attrs.get("start", 0)
+        output_value = data.shape[start:end]
+        output_shape = [len(output_value)]
+
+        output = ConstTensor(
+            output_shape,
+            "int32",
+            np.array(output_value),
+            layout=None,
+            name=output_names[0],
+            tensor_idx=output_names[0]
+        )
+
+        inputs_dict = {
+            "data": data,
+        }
+
+        outputs_dict = {
+            "output": output,
+        }
+
+        shape_op = Op.NamedOp(
+            Op.OpName.SourceOp.Shape,
+            inputs_dict,
+            outputs_dict,
+        )
+
+        return shape_op.outputs
+
+
+class GatherConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        assert len(inputs) == 2
+        data = inputs[0]
+        ndim = len(data.shape)
+        indices = inputs[1]
+        ind_shape = indices.shape
+
+        output_names = [x for x in op.output]
+        assert len(output_names) == 1
+
+        axis = attrs.get("axis", 0)
+        if axis < 0:
+            axis = axis + ndim
+        output_shape = []
+        for i in range(axis):
+            output_shape.append(data.shape[i])
+        output_shape.extend(ind_shape)
+        for j in range(axis, len(data.shape)):
+            output_shape.append(data.shape[j])
+
+        output = Tensor(
+            output_shape,
+            data.dtype,
+            layout=None,
+            name=output_names[0],
+            tensor_idx=output_names[0]
+        )
+
+        inputs_dict = {
+            "data": data,
+        }
+
+        outputs_dict = {
+            "output": output,
+        }
+
+        gather_op = Op.NamedOp(
+            Op.OpName.SparseOp.Gather,
+            inputs_dict,
+            outputs_dict,
+            attrs={
+                "axis": Attribute(ConstInt(axis))
+            }
+        )
+
+        return gather_op.outputs
+
+
+class MatMulConvertor(ONNXOpConvertor):
+    def convert_v1(self, ctx, op, inputs, attrs):
+        assert len(inputs) == 2
+
+        inputs_dict = {
+            "lhs": inputs[0],
+            "rhs": inputs[1],
+        }
+
+        lhs = inputs[0]
+        rhs = inputs[1]
+
+        assert len(lhs.shape) >= 2, "Currently we only support >= 2-D Tensor"
+        assert len(rhs.shape) >= 2, "Currently we only support >= 2-D Tensor"
+        # assert len(lhs.shape) == len(rhs.shape), f"Currently we don't support broadcast for MatMul {lhs.shape} vs {rhs.shape}:\n{op}"
+        M, K = lhs.shape[-2], lhs.shape[-1]
+        K_, N = rhs.shape[-2], rhs.shape[-1]
+        assert K == K_, f"MatMul K dimension mismatches: {K} vis {K_}"
+
+        # for i in range(len(lhs.shape) - 2):
+        #     assert lhs.shape[i] == rhs.shape[i], (
+        #         f"Currently we don't support broadcast for MatMul. Operand shape mismatch: {lhs.shape[i]} vs {rhs.shape[i]}")
+        assert lhs.dtype == rhs.dtype
+
+        output_shape = [N, M]
+        ldim = len(lhs.shape) - 2
+        rdim = len(rhs.shape) - 2
+        for i in range(min(ldim, rdim)):
+            if lhs.shape[ldim - 1 - i] == rhs.shape[rdim - 1 - i]:
+                output_shape.append(lhs.shape[ldim - 1 - i])
+            elif lhs.shape[ldim - 1 - i] == 1:
+                output_shape.append(rhs.shape[rdim - 1 - i])
+            elif rhs.shape[rdim - 1 - i] == 1:
+                output_shape.append(lhs.shape[ldim - 1 - i])
+            else:
+                raise ValueError(
+                    f"Fail to broadcast the shape for MatMul: lhs: {lhs.shape}, rhs: {rhs.shape}")
+        for i in range(ldim - min(ldim, rdim)):
+            output_shape.append(lhs.shape[ldim - min(ldim, rdim) - 1 - i])
+        for i in range(rdim - min(ldim, rdim)):
+            output_shape.append(rhs.shape[rdim - min(ldim, rdim) - 1 - i])
+
+        output_shape = list(reversed(output_shape))
+
+        assert len(op.output) == 1
+        output_name = op.output[0]
+        output = Tensor(
+            output_shape,
+            lhs.dtype,
+            layout=None,  # TODO: how to determine the layout?
+            name=output_name,
+            tensor_idx=output_name
+        )
+
+        matmul_op = Op.NamedOp(
+            Op.OpName.MatrixOp.MatMul,
+            inputs_dict,
+            {
+                "output": output
+            },
+        )
+
+        return matmul_op.outputs
+
+
 CONVERT_MAP = {
     "Add": AddConvertor,
     "AveragePool": AveragePoolConvertor,
@@ -1033,15 +1305,20 @@ CONVERT_MAP = {
     "Conv": ConvConvertor,
     "Dropout": DropoutConvertor,
     "Flatten": FlattenConvertor,
+    "Gather": GatherConvertor,
     "Gemm": GemmConvertor,
     "GlobalAveragePool": GlobalAveragePoolConvertor,
+    "Identity": IdentityConvertor,
     "LRN": LRNConvertor,
+    "MatMul": MatMulConvertor,
     "MaxPool": MaxPoolConvertor,
     "Mul": MulConvertor,
     "Pow": PowConvertor,
+    "ReduceMean": ReduceMeanConvertor,
     "Relu": ReluConvertor,
     "Reshape": ReshapeConvertor,
     "Resize": ResizeConvertor,
+    "Shape": ShapeConvertor,
     "Sigmoid": SigmoidConvertor,
     "Softmax": SoftmaxConvertor,
     "Split": SplitConvertor,
