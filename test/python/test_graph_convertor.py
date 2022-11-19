@@ -24,8 +24,9 @@ def test_convertor():
     # model_path = "raw_resnet50.onnx"
     # config_path = "w_a_joint_yolov5_pareto.json"
     # model_path = "yolov5s_640x640.simplify.onnx"
-    model_path = "googlenet-12.onnx"
+    # model_path = "googlenet-12.onnx"
     # model_path = "unet_13_256.onnx"
+    model_path = "simplified_bert_base.onnx"
 
     graph = get_graph(model_path)
     

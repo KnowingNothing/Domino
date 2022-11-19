@@ -25,6 +25,7 @@ class OpName(object):
     class MatrixOp(enum.Enum):
         FullyConnected = "FullyConnected"
         Gemm = "Gemm"
+        MatMul = "MatMul"
 
     class PadOp(enum.Enum):
         Pad = "Pad"
@@ -38,6 +39,9 @@ class OpName(object):
         TensorScalarAdd = "TensorScalarAdd"
         TensorScalarMul = "TensorScalarMul"
         TensorScalarPow = "TensorScalarPow"
+        BroadcastAdd = "BroadcastAdd"
+        BroadcastMul = "BroadcastMul"
+        BroadcastPow = "broadcastPow"
 
     class ActivationOp(enum.Enum):
         ReLU = "ReLU"
@@ -67,13 +71,20 @@ class OpName(object):
         Resize = "Resize"
 
     class ReduceOp(enum.Enum):
-        Mean = "Mean"
+        ReduceMean = "ReduceMean"
         Softmax = "Softmax"
 
     class DimOrderOp(enum.Enum):
         Transpose = "Transpose"
         Concat = "Concat"
         Split = "Split"
+
+    class SourceOp(enum.Enum):
+        Identity = "Identity"
+        Shape = "Shape"
+
+    class SparseOp(enum.Enum):
+        Gather = "Gather"
 
     @classmethod
     def elementwise_to_tensor_scalar_op(cls, org_name: ElementwiseOp):
@@ -86,6 +97,18 @@ class OpName(object):
         else:
             raise RuntimeError(
                 f"Don't support elementwise-to-broadcast for {org_name}")
+
+    @classmethod
+    def elementwise_to_broadcast_op(cls, org_name: ElementwiseOp):
+        if org_name == cls.ElementwiseOp.Add:
+            return cls.BroadcastOp.BroadcastAdd
+        elif org_name == cls.ElementwiseOp.Mul:
+            return cls.BroadcastOp.BroadcastMul
+        elif org_name == cls.ElementwiseOp.Pow:
+            return cls.BroadcastOp.BroadcastPow
+        else:
+            raise RuntimeError(
+                f"Don't support broadcast for {org_name}")
 
 
 def all_ops_in(scope):

@@ -5,6 +5,7 @@ from collections import OrderedDict
 from ..base import AcceleratorBase, AccTask
 from ..utils import run_maestro, generate_maestro_command, find_maestro
 from .. import global_timer
+import math
 
 
 class GemmAccelerator(AcceleratorBase):
@@ -19,7 +20,14 @@ class GemmAccelerator(AcceleratorBase):
     def evaluate_compute(self, *args):
         key = ("gemm", args)
         if key not in AcceleratorBase.compute_cache:
-            M, N, K = args
+            if len(args) == 3:
+                M, N, K = args
+                batches = 1
+            elif len(args) >= 4:
+                M, N, K = args[-3:]
+                batches = math.prod(args[:-3], start=1)
+            else:
+                raise ValueError(f"Don't support Gemm with args: {args}")
             mapping_contents = self.get_mapping(M, N, K)
             mapping_file = "gemm_sample_mapping"
 
@@ -47,6 +55,7 @@ class GemmAccelerator(AcceleratorBase):
 
             if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
                 os.remove(f"{mapping_file}.m")
-            AcceleratorBase.compute_cache[key] = results.runtime[0] / self.freq
+            AcceleratorBase.compute_cache[key] = batches * \
+                results.runtime[0] / self.freq
         ret = AcceleratorBase.compute_cache[key]
         return ret
