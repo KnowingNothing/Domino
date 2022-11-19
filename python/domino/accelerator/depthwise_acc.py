@@ -26,12 +26,9 @@ class DepthwiseAccelerator(AcceleratorBase):
 
             if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
                 os.remove(f"{mapping_file}.m")
-            global_timer.start('write file')
             with open(f"{mapping_file}.m", "w") as fout:
                 fout.write(mapping_contents)
-            global_timer.stop('write file')
 
-            global_timer.start('maestro')
             maestro_path = find_maestro()
             command = generate_maestro_command(
                 maestro_path,
@@ -44,7 +41,6 @@ class DepthwiseAccelerator(AcceleratorBase):
             )
 
             results = run_maestro(mapping_file, command)
-            global_timer.stop('maestro')
 
             if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
                 os.remove(f"{mapping_file}.m")

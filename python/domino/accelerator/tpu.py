@@ -35,7 +35,7 @@ class GemmTPU(GemmAccelerator):
 
         return mapping
 
-    def spatial_used_pes(self, M, N, K):
+    def spatial_used_pes(self, B, M, N, K):
         """
         Return how many PEs are actually needed
         This is calculated according to the mapping

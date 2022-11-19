@@ -4,7 +4,8 @@ from typing import List
 
 
 class MeshSoC(SoCBase):
-    def __init__(self, accelerator_matrix: List[List[AcceleratorBase]], on_chip_bw=16, off_chip_nearest_bw=1.6, name = 'MeshSoC') -> None:
+    # TODO: OFFCHIP HIGH 120, LOW 60
+    def __init__(self, accelerator_matrix: List[List[AcceleratorBase]], on_chip_bw=1000, off_chip_nearest_bw=120, name = 'MeshSoC') -> None:
         accelerator_graph = nx.DiGraph()
         self.on_chip_bw = on_chip_bw
         self.off_chip_nearest_bw = off_chip_nearest_bw
