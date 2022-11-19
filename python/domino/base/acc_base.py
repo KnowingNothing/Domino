@@ -33,8 +33,8 @@ class AccTask(object):
             stride_w = self.params["stride_w"]
             return (H, W, P, Q, K, C, R, S, stride_h, stride_w)
         elif self.task_kind == 'Gemm':
-            M, N, K = [self.params[x] for x in 'MNK']
-            return (M, N, K)
+            B, M, N, K = [self.params[x] for x in 'BMNK']
+            return (B, M, N, K)
         elif self.task_kind == 'Depthwise':
             H, W, P, Q, K, M, R, S = [self.params[x] for x in 'HWPQKMRS']
             stride_h = self.params['stride_h']
@@ -133,7 +133,7 @@ class AcceleratorBase(object):
         print(f"create {name} with {n_stream} streams")
         self.name = name
         self.supported_task = supported_task
-        self.freq = freq  # Hz
+        self.freq = freq * 1e6 # Hz
         self.num_pes = num_pes
         self.noc_bw = noc_bw  # byte/cycle
         self.off_chip_bw = off_chip_bw  # byte/s
@@ -294,7 +294,8 @@ class AcceleratorBase(object):
                 pkl.dump(AcceleratorBase.compute_cache, f)
 
     def report(self):
-        print(f"{self.name}:")
+        print(f"{self.name}: ")
+        print (f'\tEnergy consumption {self.get_current_energy_consumption()}')
         for stream_id in range(self.num_streams()):
             self.get_stream(stream_id).report()
 
@@ -380,7 +381,7 @@ class SoCBase(object):
             for acc_from, task_from in input_tasks
         ) if len(input_tasks) else 0
 
-        compute_time_cost = acc.evaluate_compute(*params)
+        compute_time_cost = acc.evaluate_compute(*params)[0]
 
         return fetch_data_cost + compute_time_cost, acc.spatial_used_pes(*params)
 
@@ -398,7 +399,7 @@ class SoCBase(object):
 
     def eval_computation(self, task, acc_name):
         acc = self.accelerator_graph.nodes[acc_name]['acc']
-        return acc.evaluate_compute(*task.get_params())
+        return acc.evaluate_compute(*task.get_params())[0]
     
     def eval_pe_usage(self, task, acc_name):
         acc = self.accelerator_graph.nodes[acc_name]['acc']
