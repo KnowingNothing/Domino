@@ -47,6 +47,6 @@ class ConvAccelerator(AcceleratorBase):
 
             if os.path.exists(f"{mapping_file}.m") and os.path.isfile(f"{mapping_file}.m"):
                 os.remove(f"{mapping_file}.m")
-            AcceleratorBase.compute_cache[key] = results.runtime[0] / self.freq
+            AcceleratorBase.compute_cache[key] = (results.runtime[0] / self.freq, results.energy[0])
         ret = AcceleratorBase.compute_cache[key]
         return ret
