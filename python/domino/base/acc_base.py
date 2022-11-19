@@ -129,7 +129,6 @@ class AccStream(object):
 class AcceleratorBase(object):
 
     def __init__(self, name, n_stream, supported_task, freq=200, num_pes=65536, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000) -> None:
-        print (f"create {name} with {n_stream} streams")
         self.name = name
         self.supported_task = supported_task
         self.freq = freq  # Hz
@@ -292,8 +291,9 @@ class AcceleratorBase(object):
             self.get_stream(stream_id).report()
 
 class SoCBase(object):
-    def __init__(self, accelerator_graph: nx.DiGraph) -> None:
+    def __init__(self, accelerator_graph: nx.DiGraph, name = 'SoC') -> None:
         self.accelerator_graph = accelerator_graph
+        self.name = name
         self.elapsed_time = 0
         self._bind_table = {}  # task id to (accelerator_id, stream_id)
 
@@ -357,7 +357,7 @@ class SoCBase(object):
         acc_name, task  = curr_task
         acc = self.accelerator_graph.nodes[acc_name]['acc']
         params = task.get_params()
-        
+                     
         fetch_data_cost = max(
             task_from.get_output_data_volume() / 1e9 / self.accelerator_graph[acc_from][acc_name]['bandwidth']
             for acc_from, task_from in input_tasks
@@ -366,6 +366,29 @@ class SoCBase(object):
         compute_time_cost = acc.evaluate_compute(*params)
         
         return fetch_data_cost + compute_time_cost, acc.spatial_used_pes(*params)
+
+    def eval_communication(self, 
+        curr_task: Tuple[AccTask, "AcceleratorName"], 
+        input_tasks: List[Tuple[AccTask, "AcceleratorName"]]
+    ):
+        acc_name, _  = curr_task
+        fetch_data_cost = max(
+            task_from.get_output_data_volume() / 1e9 / self.accelerator_graph[acc_from][acc_name]['bandwidth']
+            for acc_from, task_from in input_tasks
+        ) if len(input_tasks) else 0
+        
+        return fetch_data_cost
+
+    def eval_computation(self, task, acc_name):
+        acc = self.accelerator_graph.nodes[acc_name]['acc']
+        return acc.evaluate_compute(*task.get_params())
+    
+    def eval_pe_usage(self, task, acc_name):
+        acc = self.accelerator_graph.nodes[acc_name]['acc']
+        return acc.spatial_used_pes(*task.get_params())
+
+    def get_acc2task_kinds(self):
+        return {acc_name: acc.supported_task for acc_name, acc in self.accelerator_graph.nodes.data('acc')}
 
     def get_all_accs(self):
         ret = {}
@@ -383,3 +406,11 @@ class SoCBase(object):
     def get_resource_limit(self, acc: str):
         acc = self.accelerator_graph.nodes[acc]['acc']
         return {"num_stream": acc.num_streams(), 'num_pes': acc.num_pes}
+    
+    def get_all_resource_limit(self):
+        return {name: [acc.num_streams(), acc.num_pes] 
+                for name, acc in self.accelerator_graph.nodes.data('acc')}
+    
+    def get_machines(self):
+        return [str(x) for x in self.accelerator_graph.nodes]
+    

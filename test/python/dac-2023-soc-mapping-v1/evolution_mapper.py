@@ -27,6 +27,15 @@ class PlacerBase:
     def place(self, soc: SoCBase, acc: str, configs: List[Tuple[float, float]],) -> Tuple["Latency", Dict[AccTask, "streamid"], Dict[AccTask, "start_time"], Dict[str, Any]]:
         raise NotImplementedError()
 
+class ParallelMachineScheduler:
+    def schedule(self, 
+                num_resources: int, 
+                machines: List[str], 
+                resource_costraint: Dict[str, List[float]], 
+                resource_requirement: List[Dict[str, List[float]]], 
+                timing: List[Dict[str, float]]):
+        raise NotImplementedError()
+
 
 class Individual:
     def __init__(self):
@@ -42,13 +51,16 @@ class Individual:
     
 class Population:
     num_generations = 10
-    size = 10
-    direct_heir_rate = 0.2
-    mutate_rate = 0.5
-    layer_mutate_rate = 0.3
+    size = 20
+    mutate_rate = 0.3
+    layer_mutate_rate = 0.5
     
     def __init__(self):
         self.population:List[Individual] = list()
+        
+    def natrual_choice(self):
+        self.population.sort(key=lambda idv: idv.latency)
+        self.population = self.population[:Population.size]
         
     def select(self, n = 1, best = False) -> Union[List[Individual], Individual]:
         if best:
@@ -58,9 +70,9 @@ class Population:
                     best_lat = idv.latency 
                     best_idv = idv 
             return best_idv 
-
+        
         scores = - np.array([x.latency for x in self.population])
-        normalized = (scores - np.mean(scores)) / np.std(scores)
+        normalized = (scores - np.mean(scores)) / (np.std(scores) + 1)
         exp = np.exp(normalized)
         probs = exp / np.sum(exp)
         return np.random.choice(self.population, n, p=probs)            
@@ -71,10 +83,13 @@ class Population:
     def show(self):
         for i, idv in enumerate(self.population):
             print(f'{i}: {idv}')
+            
+            
 class EvolutionMapper(MapperBase):
-    def __init__(self, placer: PlacerBase, verbose: bool = False):
+    def __init__(self, placer: Union[PlacerBase, None] = None, scheduler: Union[ParallelMachineScheduler, None] = None, verbose: bool = False):
         super(EvolutionMapper, self).__init__(verbose)
         self.placer = placer
+        self.scheduler = scheduler
         self.max_depth = 15
         self.max_mapping_candidate = 100
         
@@ -93,7 +108,7 @@ class EvolutionMapper(MapperBase):
             resource_usages[nid] = {acc: self.soc.eval_pe_usage(self.cg.g.nodes[nid]['task'], acc) 
                                   for acc in avail_accs}
         return resource_usages 
-    
+        
     # dp[:idx] = max_{j}{dp[:idx-j] + self.placer(dp[idx-j:idx])}  
     def dp(self):
         self.__cache.clear()
@@ -131,11 +146,9 @@ class EvolutionMapper(MapperBase):
                 if invalid: continue
                 
                 clock, _, task_placement, _, _ = self.__cache[idx - j]
-                # todo: consider heterogeneity when doing grouping 
-                candidates = list(product(*[accs[MapperBase.op2task[self.cg.g.nodes[group[0]]['op'].name]] for group in groups]))
                 
-                group_times = [] # List[List[]]
-                group_pe_usage = []
+                group_times = [] # List[Dict[Accelerator, List[time]]]
+                group_pe_usage = [] 
                 for group in groups:
                     acc_times = {}
                     acc_pe_usage = {}
@@ -143,14 +156,6 @@ class EvolutionMapper(MapperBase):
                         start_times = [0]
                         for nid in group:
                             compute_time = compute_times[nid][acc]
-                            for pred in self.cg.g.pred[nid]:
-                                valid = pred in group or pred in task_placement
-                                if not valid:
-                                    print ("task_placement: ", task_placement)
-                                    print ("__cache: ", self.__cache)
-                                    print ("pred, ", pred, 'nid', nid, 'group', group)
-                                    print ('layer', self.topo_order[idx-j:idx])
-                                    raise RuntimeError()
                             comm_time = self.soc.eval_communication(
                                     (acc, self.cg.g.nodes[nid]['task']), 
                                     [(task_placement[pred][0] if pred not in group else acc, self.cg.g.nodes[pred]['task']) for pred in self.cg.g.pred[nid]]) 
@@ -160,39 +165,66 @@ class EvolutionMapper(MapperBase):
                     group_times.append(acc_times)
                     group_pe_usage.append(acc_pe_usage)
                 
-                for cand in random.sample(candidates, min(len(candidates), self.max_mapping_candidate)):     
-                    acc2groups = {}
-                    for gid, acc in enumerate(cand):                        
-                        if acc not in acc2groups:
-                            acc2groups[acc] = []
-                        acc2groups[acc].append(gid)
-                        
-                    elapsed_time = 0
-                    curr_task_placement = {}
-                    curr_task_timing = {}
-                    curr_hardware_occupancy = {}
-
-                    for acc, acc_groups in acc2groups.items():
-                        group_elapsed_time, placement, timing, attrs = self.placer.place(
-                            self.soc, acc, [(group_times[gid][acc][-1], group_pe_usage[gid][acc]) for gid in acc_groups])
-                        
-                        elapsed_time = max(group_elapsed_time, elapsed_time)
-                        
-                        if elapsed_time + clock > best_lat: break 
-                        
-                        curr_hardware_occupancy[acc] = attrs['occupancy']
-                        for i, gid in enumerate(acc_groups):
-                            for ii, nid in enumerate(groups[gid]):
-                                curr_task_placement[nid] = (acc, placement[i]) 
-                                curr_task_timing[nid] = clock + timing[i] + group_times[gid][acc][ii]
-                                
+                if self.scheduler is not None:
+                    machines = self.soc.get_machines()
+                    resource_constraint = self.soc.get_all_resource_limit()
+                    resource_requirement = []
+                    for x in group_pe_usage:
+                        resource_requirement.append({acc:[1,x[acc]] for acc in x})
+                    timing = []
+                    for x in group_times:
+                        timing.append({acc: x[acc][-1] for acc in x})
+                    elapsed_time, placement, scheduling, hardware_occupancy = self.scheduler.schedule(2, machines, resource_constraint, resource_requirement, timing)
                     if best_lat > elapsed_time + clock:
-                        best_lat = elapsed_time + clock
-                        best_cand = (best_lat, j, curr_task_placement, curr_task_timing, curr_hardware_occupancy)
+                        best_lat = elapsed_time + clock 
+                        curr_task_placement = {}
+                        curr_task_timing = {}
+                        for i, group in enumerate(groups):
+                            machine, resource = placement[i]
+                            start_time = clock + scheduling[i] 
+                            for ii, nid in enumerate(group):
+                                curr_task_placement[nid] = (machine, resource[0])
+                                assert resource[0] < self.soc.accelerator_graph.nodes[machine]['acc'].num_streams()
+                                curr_task_timing[nid] = start_time 
+                                start_time += group_times[i][machine][ii]
+                        best_cand = (best_lat, j, curr_task_placement, curr_task_timing, {x: hardware_occupancy[x][1] for x in hardware_occupancy})    
+                # todo: consider heterogeneity when doing grouping 
+                elif self.placer is not None:
+                    candidates = list(product(*[accs[MapperBase.op2task[self.cg.g.nodes[group[0]]['op'].name]] for group in groups]))
+                    
+                    for cand in random.sample(candidates, min(len(candidates), self.max_mapping_candidate)):     
+                        acc2groups = {}
+                        for gid, acc in enumerate(cand):                        
+                            if acc not in acc2groups:
+                                acc2groups[acc] = []
+                            acc2groups[acc].append(gid)
+                            
+                        elapsed_time = 0
+                        curr_task_placement = {}
+                        curr_task_timing = {}
+                        curr_hardware_occupancy = {}
+
+                        for acc, acc_groups in acc2groups.items():
+                            group_elapsed_time, placement, timing, attrs = self.placer.place(
+                                self.soc, acc, [(group_times[gid][acc][-1], group_pe_usage[gid][acc]) for gid in acc_groups])
+                            
+                            elapsed_time = max(group_elapsed_time, elapsed_time)
+                            
+                            if elapsed_time + clock > best_lat: break 
+                            
+                            curr_hardware_occupancy[acc] = attrs['occupancy']
+                            for i, gid in enumerate(acc_groups):
+                                for ii, nid in enumerate(groups[gid]):
+                                    curr_task_placement[nid] = (acc, placement[i]) 
+                                    curr_task_timing[nid] = clock + timing[i] + group_times[gid][acc][ii]
+                                    
+                        if best_lat > elapsed_time + clock:
+                            best_lat = elapsed_time + clock
+                            best_cand = (best_lat, j, curr_task_placement, curr_task_timing, curr_hardware_occupancy)
+                else:
+                    raise RuntimeError('at least one of scheudler and placer is not none')
             assert best_lat < math.inf
             best_cand[2].update(self.__cache[idx - best_cand[1]][2])
-            for j in self.topo_order[:idx]:
-                assert j in best_cand[2]
             self.__cache[idx] = best_cand
                 
         return self.__cache[len(self.cg.g.nodes)]
@@ -259,6 +291,24 @@ class EvolutionMapper(MapperBase):
                     S.append(j)
         return L 
 
+    def bfs_dfs(self, graph):
+        L = []
+        num_preds = {i:len(graph.pred[i]) for i in graph.nodes}
+        S = [i for i, n_pred in num_preds.items() if n_pred == 0]
+        while len(S):
+            i = S[0]
+            L.append(i)
+            S = S[1:]
+            succs = list(graph.succ[i])
+            for j in succs:
+                num_preds[j] -= 1 
+                if num_preds[j] == 0:
+                    if random.random() < 0.5:
+                        S.append(j)
+                    else: S = [j] + S
+        return L 
+        
+
     def bfs_reversed(self, graph):
         L = []
         num_succs = {i:len(graph.succ[i]) for i in graph.nodes}
@@ -273,6 +323,26 @@ class EvolutionMapper(MapperBase):
                 num_succs[j] -= 1
                 if num_succs[j] == 0:
                     S.append(j)
+        L.reverse()
+        
+        return L 
+    
+    def bfs_dfs_reversed(self, graph):
+        L = []
+        num_succs = {i:len(graph.succ[i]) for i in graph.nodes}
+        S = [i for i, n_succ in num_succs.items() if n_succ == 0]
+        while len(S):
+            i = S[0]
+            L.append(i)
+            S = S[1:]
+            preds = list(graph.pred[i])
+            random.shuffle(preds)
+            for j in preds:
+                num_succs[j] -= 1
+                if num_succs[j] == 0:
+                    if random.random() < 0.5:
+                        S.append(j)
+                    else: S = [j] + S
         L.reverse()
         
         return L 
@@ -312,8 +382,25 @@ class EvolutionMapper(MapperBase):
         L.reverse()
         return L 
 
+    def random_sort(self, graph):
+        L = []
+        pred_cnt = {x:len(graph.pred[x]) for x in graph.nodes}
+        
+        frontiers = [x for x,cnt in pred_cnt.items() if cnt == 0]
+        
+        while len(frontiers):
+            i = random.randint(0,len(frontiers)-1)
+            nid = frontiers[i]
+            L.append(frontiers[i])
+            frontiers = frontiers[:i] + frontiers[i+1:]
+            for succ in graph.succ[nid]:
+                pred_cnt[succ] -= 1
+                if pred_cnt[succ] == 0:
+                    frontiers.append(succ)
+        return L 
+
     def topo_sort(self, graph):
-        return [self.dfs, self.bfs, self.dfs_reversed, self.bfs_reversed][random.randint(0,3)](graph)
+        return [self.bfs, self.bfs_reversed, self.bfs_dfs, self.bfs_dfs_reversed][random.randint(0,3)](graph)
 
     def __call__(self, soc: SoCBase):
         self.soc = soc
@@ -355,6 +442,7 @@ class EvolutionMapper(MapperBase):
         self.topo_order = topo_order 
         self.__cache = {}
         ret.latency = self.dp()[0]
+        assert ret.latency < math.inf
         ret.layers = []
 
         i = len(self.cg.g.nodes)
@@ -399,39 +487,72 @@ class EvolutionMapper(MapperBase):
             for j in range(len(parent.layers)):
                 layer_ids.append((i,j))
         layer_ids = sorted(layer_ids, key=lambda x: parents[x[0]].layers[x[1]][0], reverse = True)
-        fixed = []
-        invalid = set()
+        # fixed = []
+        # invalid = set()
         
-        def compatible(group1, group2):
-            forward = False 
-            backward = False
-            for i in group1:
-                for j in group2:
-                    if i == j:
-                        return False 
-                    if self.closure_graph.has_edge(i,j):
-                        forward = True 
-                        if backward: return False 
-                    if self.closure_graph.has_edge(j,i):
-                        backward = True 
-                        if forward: return False 
-            return True 
+        # def compatible(group1, group2):
+        #     forward = False 
+        #     backward = False
+        #     for i in group1:
+        #         for j in group2:
+        #             if i == j:
+        #                 return False 
+        #             if self.closure_graph.has_edge(i,j):
+        #                 forward = True 
+        #                 if backward: return False 
+        #             if self.closure_graph.has_edge(j,i):
+        #                 backward = True 
+        #                 if forward: return False 
+        #     return True 
         
-        for i, j in layer_ids:
-            if (i,j) in invalid: continue 
-            fixed.append(parents[i].layers[j][1])
-            ii = 1 - i 
-            for jj in range(len(parents[ii].layers)):
-                if (ii, jj) in invalid: continue
-                if not compatible(parents[i].layers[j][1], parents[ii].layers[jj][1]):
-                    invalid.add((ii, jj))
+        # for i, j in layer_ids:
+        #     if (i,j) in invalid: continue 
+        #     fixed.append(parents[i].layers[j][1])
+        #     ii = 1 - i 
+        #     for jj in range(len(parents[ii].layers)):
+        #         if (ii, jj) in invalid: continue
+        #         if not compatible(parents[i].layers[j][1], parents[ii].layers[jj][1]):
+        #             invalid.add((ii, jj))
+        
+        def has_edge(x, y):
+            i, j = x 
+            ii, jj = y 
+            for v in parents[i].layers[j][1]:
+                for vv in parents[ii].layers[jj][1]:
+                    if v == vv or self.closure_graph.has_edge(v, vv): 
+                        return True
+            return False 
+            
+        compatible_graph = nx.DiGraph()
+        for id in layer_ids:
+            tos  = [iidd for iidd in compatible_graph if has_edge(id, iidd)]
+            froms= [iidd for iidd in compatible_graph if has_edge(iidd, id)]
+            valid = True
+            for to_id in tos: 
+                for from_id in froms:
+                    if to_id == from_id or compatible_graph.has_edge(to_id, from_id):
+                        valid = False 
+                        break 
+                if not valid: break 
+            if not valid: continue 
+            
+            compatible_graph.add_node(id)
+            compatible_graph.add_edges_from([(id, to) for to in tos])
+            compatible_graph.add_edges_from([(from_id, id) for from_id in froms])
+            compatible_graph = nx.transitive_closure(compatible_graph)
+            
+        fixed = [parents[i].layers[j][1] for i, j in compatible_graph.nodes]                            
+    
         return self.gen_idv_with_fixed(fixed)
         
     def mutate(self, x: Individual):
         fixed = []
-        for layer in x.layers:
-            if random.random() > Population.layer_mutate_rate: 
-                fixed.append(layer[1])
+        ids = sorted(range(len(x.layers)), key = lambda i: x.layers[i][0], reverse=True)
+        n_fixed = int(len(x.layers) * (1 - Population.layer_mutate_rate))
+        fixed = [x.layers[i][1] for i in ids[:n_fixed]]
+        # for layer in x.layers:
+        #     if random.random() > Population.layer_mutate_rate: 
+        #         fixed.append(layer[1])
         return self.gen_idv_with_fixed(fixed)
     
     def evolve_search(self):
@@ -440,21 +561,18 @@ class EvolutionMapper(MapperBase):
         for generation in range(Population.num_generations):
             pop.show()
             print (f"generation {generation}, score {pop.select(best=True)}")
-            new_pop = Population()
             for i in range(Population.size):
-                if random.random() < Population.direct_heir_rate:
+                if random.random() < Population.mutate_rate:
                     # direct pass the chronosome down
-                    print(f"{generation}, {i}: direct inherit") 
-                    offspring = pop.select()[0]
+                    print(f"{generation}, {i}: mutate") 
+                    offspring = self.mutate(pop.select()[0])
                 else:
                     print(f'{generation}, {i}: crossover')
                     x, y = pop.select(2)
                     offspring = self.crossover(x,y)
                 print (f'offspring:{offspring}')
-                if random.random() < Population.mutate_rate:
-                    offspring = self.mutate(offspring)
-                new_pop.add(offspring)
-            pop = new_pop 
+                pop.add(offspring)
+            pop.natrual_choice()
             
         return pop.select(best = True)
     
@@ -496,6 +614,69 @@ class SimplePlacer(PlacerBase):
                 total_lat = min_lat + configs[id][0]
         attrs['occupancy'] = sum([x*y for x, y in configs])/ (resource_limit * total_lat)
         return total_lat, id2stream, id2time, attrs 
+
+
+class GreedyScheduler(ParallelMachineScheduler):
+    def schedule(self, 
+                num_resources: int, 
+                machines: List[str], 
+                resource_costraint: Dict[str, List[float]], 
+                resource_requirement: List[Dict[str, List[float]]], 
+                timing: List[Dict[str, float]]):
+        
+        resource_used = {machine: [0] * num_resources for machine in machines} # 
+        machine_commit_time = {machine: 0 for machine in machines}
+        machine_finish_time = {machine: 0 for machine in machines}
+        ids = sorted(range(len(resource_requirement)), key = lambda i: np.mean(list(timing[i].values()))) 
+        resource_occupancy = {machine: [0]*num_resources for machine in machines}
+        
+        def put(machine, job_id):  
+            machine_resource_constraint = resource_costraint[machine] 
+            commit_time = machine_commit_time[machine]
+            job_time = timing[job_id][machine]
+            finish_time = max(commit_time + job_time, machine_finish_time[machine])
+            resource_usage_before = resource_used[machine]
+            resource_usage_after = [x+y for x, y in zip(resource_requirement[job_id][machine], resource_usage_before)]
+            need_reset = reduce(lambda x,y: x or y, [x>y for x,y in zip(resource_usage_after, machine_resource_constraint)], False)
+            if need_reset:
+                resource_usage_before = [0] * num_resources 
+                resource_usage_after = resource_requirement[job_id][machine]
+                commit_time = machine_finish_time[machine] 
+                finish_time = commit_time + job_time 
+            return finish_time, commit_time, job_time, resource_usage_before, resource_usage_after  
+        
+        placement = {}
+        schedule = {}
+                
+        for id in ids:
+            best_finish_time = math.inf 
+            best_machine = None
+            for machine in timing[id].keys():
+                finish_time, _,_,_,_ = put(machine, id)
+                if finish_time < best_finish_time: 
+                    best_finish_time = finish_time
+                    best_machine = machine 
+            assert best_finish_time < math.inf 
+            finish_time, commit_time, job_time, resource_usage_before, resource_usage_after = put(best_machine, id)
+            placement[id] = (best_machine, resource_usage_before)
+            schedule[id] = commit_time
+            resource_used[best_machine] = resource_usage_after 
+            machine_finish_time[best_machine] = finish_time 
+            machine_commit_time[best_machine] = commit_time
+            for i, r in enumerate(resource_requirement[id][best_machine]):
+                resource_occupancy[best_machine][i] += job_time * r       
+        
+        elapsed = max(list(machine_finish_time.values()))
+        
+        for machine in machines: 
+            for i in range(num_resources):
+                resource_occupancy[machine][i] /= elapsed * resource_costraint[machine][i]
+        # print('elapsed', elapsed)
+        # print('placement', placement)
+        # print('schedule', schedule)
+        # print('resource_occupancy', resource_occupancy)
+        
+        return elapsed, placement, schedule, resource_occupancy 
 
 def main(): 
     models = ['resnet18', 'resnet50', 'yolo', 'resnet50', 'resnet50']

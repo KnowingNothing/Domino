@@ -292,7 +292,7 @@ def get_graph(models: List[str]):
         elif model == "super_resolution":
             model_path = "./graph/super_resolution.onnx"
         elif model == 'bert':
-            model_path = "./graph/bert-base.onnx"
+            model_path = "./graph/simplified_bert_base.onnx"
         elif model == "gpt2":
             model_path = "./graph/gpt2-10.onnx"
         else:

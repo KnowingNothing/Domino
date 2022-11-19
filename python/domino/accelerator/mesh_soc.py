@@ -4,7 +4,7 @@ from typing import List
 
 
 class MeshSoC(SoCBase):
-    def __init__(self, accelerator_matrix: List[List[AcceleratorBase]], on_chip_bw=16, off_chip_nearest_bw=1.6) -> None:
+    def __init__(self, accelerator_matrix: List[List[AcceleratorBase]], on_chip_bw=16, off_chip_nearest_bw=1.6, name = 'MeshSoC') -> None:
         accelerator_graph = nx.DiGraph()
         self.on_chip_bw = on_chip_bw
         self.off_chip_nearest_bw = off_chip_nearest_bw
@@ -23,19 +23,15 @@ class MeshSoC(SoCBase):
                 accelerator_graph.add_node(acc.name, acc=acc)
         for i in range(num_rows):
             for j in range(num_cols):
-                for u in range(i, num_rows):
-                    for v in range(j, num_cols):
+                for u in range(num_rows):
+                    for v in range(num_cols):
                         acc_1 = accelerator_matrix[i][j]
                         acc_2 = accelerator_matrix[u][v]
-                        distance = (u - i) + (v - j)
+                        distance = abs(u - i) + abs(v - j)
                         if distance == 0:
                             accelerator_graph.add_edge(
                                 acc_1.name, acc_2.name, bandwidth=self.on_chip_bw)
-                            accelerator_graph.add_edge(
-                                acc_2.name, acc_1.name, bandwidth=self.on_chip_bw)
                         else:
                             accelerator_graph.add_edge(
                                 acc_1.name, acc_2.name, bandwidth=self.off_chip_nearest_bw / distance)
-                            accelerator_graph.add_edge(
-                                acc_2.name, acc_1.name, bandwidth=self.off_chip_nearest_bw / distance)
-        super(MeshSoC, self).__init__(accelerator_graph)
+        super(MeshSoC, self).__init__(accelerator_graph, name=name)
