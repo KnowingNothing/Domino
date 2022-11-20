@@ -4,6 +4,7 @@ import pickle as pkl
 import networkx as nx
 from typing import Dict, Any, List, Tuple
 from collections import OrderedDict
+import numpy as np
 from .. import global_timer
 
 
@@ -52,8 +53,8 @@ class AccTask(object):
             H, W, P, Q, K, C, R, S = [self.params[x] for x in "HWPQKCRS"]
             return P * Q * K
         elif self.task_kind == 'Gemm':
-            M, N = [self.params[x] for x in 'MN']
-            return M*N
+            B, M, N = [self.params[x] for x in 'BMN']
+            return B*M*N
         elif self.task_kind == 'Depthwise':
             K, P, Q = [self.params[x] for x in 'KPQ']
             return K*P*Q
@@ -69,6 +70,7 @@ class AccTask(object):
     def __repr__(self) -> str:
         return str(self)
 
+# communication time 
 
 class AccStream(object):
     def __init__(self, idx) -> None:
@@ -91,10 +93,11 @@ class AccStream(object):
         assert isinstance(task, AccTask)
         self._stream.append(task)
 
-    def retire(self, task, elapsed_time):
+    def retire(self, task, comm_time, compute_time):
+        elapsed_time = comm_time + compute_time 
         assert len(self._to_commit) > 0
         assert task == self._to_commit[-1], f"stream: {self.idx}: {task} vs {self._to_commit[-1]}"
-        self.logs.append([task, self._elapsed_time, elapsed_time])
+        self.logs.append([task, self._elapsed_time, {'elapsed': elapsed_time, 'compute': compute_time, 'communication': comm_time}])
         self._to_commit = self._to_commit[:-1]
         self._elapsed_time += elapsed_time
         return self._elapsed_time
@@ -122,10 +125,17 @@ class AccStream(object):
         self._stream = self._stream[1:]
 
     def report(self):
-        occupation = sum([x[2] for x in self.logs]) / self._elapsed_time
+        occupation = sum([x[2]['elapsed'] for x in self.logs]) / self._elapsed_time 
+        comm_rate = sum([x[2]['communication'] for x in self.logs]) / self._elapsed_time 
+        compute_portion = sum([x[2]['compute'] for x in self.logs]) / self._elapsed_time 
         print(
-            f"\tstream {self.idx}: {len(self.logs)} task, {occupation} occupied")
-
+            f"\tstream {self.idx}: {len(self.logs)} task, {occupation} occupied, {comm_rate} communication, {compute_portion} computation")
+    
+    def profile(self):
+        compute_time = sum(x[2]['compute'] for x in self.logs)
+        comm_time = sum(x[2]['communication'] for x in self.logs)
+        idle_time = self._elapsed_time - compute_time - comm_time 
+        return {'compute': compute_time, 'communication': comm_time, 'idle': idle_time}
 
 class AcceleratorBase(object):
 
@@ -147,6 +157,9 @@ class AcceleratorBase(object):
         for _ in range(n_stream - 1):
             self.add_new_stream()
         self.total_energy = 0  # nJ
+        
+        # for visualization
+        self.pe_usages = []
 
     def add_new_stream(self):
         self.unique_stream_id += 1
@@ -194,11 +207,13 @@ class AcceleratorBase(object):
         """
         Calculate fetch data runtime seconds
         """
-        max_transfer_time = 0
+        # max_transfer_time = 0
+        sum_transfer_time = 0
         for ptask in task.depend_tasks:
             transfer_time = soc.evaluate_data_transfer(ptask, task)
-            max_transfer_time = max(max_transfer_time, transfer_time)
-        return max_transfer_time
+            sum_transfer_time += transfer_time
+            # max_transfer_time = max(max_transfer_time, transfer_time)
+        return sum_transfer_time
 
     def commit_current_tasks(self, soc: "SoCBase"):
         phase = {}
@@ -208,12 +223,14 @@ class AcceleratorBase(object):
             total_tasks += stream.num_tasks()
 
         def commit():
-            global_timer.start('actual commit')
             nonlocal phase
             nonlocal cur_pe_usage
             sync_time = 0
+            old_time = max(self.get_stream(idx)._elapsed_time for idx in range(self.num_streams()))
 
             pe_offset = 0
+            pe_amount = 0
+            comm_amount = 0
             max_power = 0
             for idx, task in phase.items():
                 stream = self.get_stream(idx)
@@ -223,21 +240,28 @@ class AcceleratorBase(object):
                     *task_params)
                 max_power = max(max_power, power)
                 sync_time = max(sync_time, stream.retire(
-                    task, fetch_data_cost + compute_time_cost))
+                    task, fetch_data_cost, compute_time_cost))
 
                 task.pe_start = pe_offset
-                pe_offset += self.spatial_used_pes(*task.get_params())
+                pe_usage = self.spatial_used_pes(*task.get_params())
+                pe_offset += pe_usage 
+                pe_amount += pe_usage * compute_time_cost
+                comm_amount += pe_usage * fetch_data_cost
                 task.pe_finish = pe_offset
                 task.compute_start = stream._elapsed_time
                 task.compute_finish = task.compute_start + fetch_data_cost + compute_time_cost
                 task.acc = self.name
                 task.stream = idx
-            self.total_energy += sync_time * max_power
-            for idx, task in phase.items():
+            phase_time = sync_time - old_time
+            self.pe_usages.append({'occupancy': pe_offset / self.num_pes, 
+                                   'amount': pe_amount, 
+                                   'comm_amount': comm_amount, 
+                                   'phase_amount': phase_time * self.num_pes})
+            self.total_energy += phase_time * max_power
+            for idx in range(self.num_streams()):
                 self.get_stream(idx)._elapsed_time = sync_time
             phase = {}
             cur_pe_usage = 0
-            global_timer.stop('actual commit')
 
         while total_tasks > 0:
             # this traverse is ordered according to idx because we use OrderedDict
@@ -301,6 +325,14 @@ class AcceleratorBase(object):
         for stream_id in range(self.num_streams()):
             self.get_stream(stream_id).report()
 
+    def profile(self):
+        data = {'compute': 0, 'communication': 0, 'idle': 0}
+        for idx in range(self.num_streams()):
+            stream = self.get_stream(idx)
+            stream_data = stream.profile()
+            for k in data: 
+                data[k] += stream_data[k]
+        return data 
 
 class SoCBase(object):
     def __init__(self, accelerator_graph: nx.DiGraph, name = 'SoC') -> None:
@@ -346,7 +378,7 @@ class SoCBase(object):
                 self.elapsed_time, acc.commit_current_tasks(self))
             for i in range(acc.num_streams()):
                 assert acc[i].empty()
-        # sync
+        # global sync
         for _, acc in self.accelerator_graph.nodes.data('acc'):
             acc.sync(self.elapsed_time)
 
@@ -392,7 +424,7 @@ class SoCBase(object):
         input_tasks: List[Tuple[AccTask, "AcceleratorName"]]
     ):
         acc_name, _  = curr_task
-        fetch_data_cost = max(
+        fetch_data_cost = sum(
             task_from.get_output_data_volume() / 1e9 / self.accelerator_graph[acc_from][acc_name]['bandwidth']
             for acc_from, task_from in input_tasks
         ) if len(input_tasks) else 0
@@ -422,6 +454,18 @@ class SoCBase(object):
     def report(self):
         for _, acc in self.accelerator_graph.nodes.data('acc'):
             acc.report()
+            
+    def store_pe_curve(self, path):
+        data = {}
+        for name, acc in self.accelerator_graph.nodes.data('acc'):
+            data[name] = {'amount': self.elapsed_time * acc.num_pes, 
+                          'compute_amount': sum(x['amount'] for x in acc.pe_usages), 
+                          'comm_amount': sum(x['comm_amount'] for x in acc.pe_usages),
+                          'phase_amount': sum(x['phase_amount'] for x in acc.pe_usages),
+                          'occupancy': np.mean([x['occupancy'] for x in acc.pe_usages])}
+        with open(path, 'wb') as f:
+            pkl.dump(data, f)
+
 
     def get_resource_limit(self, acc: str):
         acc = self.accelerator_graph.nodes[acc]['acc']
@@ -434,3 +478,8 @@ class SoCBase(object):
     def get_machines(self):
         return [str(x) for x in self.accelerator_graph.nodes]
     
+    def profile(self):
+        data = {}
+        for name, acc in self.accelerator_graph.nodes.data('acc'):
+            data[name] = acc.profile()
+        return {'elapsed': self.elapsed_time, 'profile': data} 

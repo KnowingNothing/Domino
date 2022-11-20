@@ -15,45 +15,56 @@ from domino.program_ir import ConstInt, ConstUInt, ConstFloat, ConstString, Expr
 import matplotlib.pyplot as plt
 from domino import global_timer
 
-from base import ComputationGraph, MapperBase, GraphIRConverter, get_graph, visualize
+from base import ComputationGraph, MapperBase, GraphIRConverter, get_graph, visualize, ParallelMachineScheduler, GreedyScheduler
 
 class GreedyMapper(MapperBase):
-    def __init__(self, verbose: bool = False): 
+    def __init__(self, scheduler: ParallelMachineScheduler, verbose: bool = False): 
+        self.scheduler = scheduler 
         super(GreedyMapper, self).__init__(verbose)
-
+    
     def __call__(self, soc: SoCBase):
-        accs = soc.get_all_accs()
-        op2task = {Op.OpName.ConvOp.Conv2d: "Conv2d", Op.OpName.ConvOp.DepthwiseConv2d: "Depthwise", Op.OpName.MatrixOp.Gemm:"Gemm"}
-                
-        self.g = self.cg.g.copy() 
-        # an matching example 
-        iter = 0
-        elapsed_time = 0
-        while len(self.g.nodes):
-            nodes = [node for node in self.g.nodes if not self.g.pred[node]]
-            for node in nodes:
-                opname = self.g.nodes[node]['op'].name
-            candidates = list(product(*[accs[op2task[self.g.nodes[node]['op'].name]] for node in nodes]))
-            
-            min_time = math.inf
-            best_candidate: Tuple[Tuple[AcceleratorBase, int]] = tuple()
-            for candidate in random.sample(candidates, k=min(100, len(candidates))):
-                candidate = tuple((acc, 0) for acc in candidate)
-                # print (f"run candidate {i}")
-                global_timer.start('simulate')
-                complete_time = self.commit(soc.snapshot(), nodes, candidate, True)
-                global_timer.stop('simulate')
-                if min_time > complete_time:
-                    min_time = complete_time
-                    best_candidate = candidate 
-            elapsed_time = self.commit(soc, nodes, best_candidate)
-            if self.verbose:
-                global_timer.show(f'-----------------iter{iter}----------------')
-            iter += 1
-        global_timer.show(f'finished mapping with time {elapsed_time}') 
-        return elapsed_time
-               
+        assert self.scheduler is not None
+        self.g = self.cg.g.copy()
+        self.soc = soc
         
+        machines = soc.get_machines()
+        resource_constraint = soc.get_all_resource_limit() 
+        
+        
+        pred_cnt = {x:len(self.g.pred[x]) for x in self.g.nodes}
+        frontiers = [x for x, cnt in pred_cnt.items() if cnt == 0]
+        
+        accs = soc.get_all_accs()
+        compute_times = self.get_compute_time(accs)
+        resource_usages = self.get_resource_usage(accs)
+
+        while len(frontiers):
+            timing = []          
+            for x in frontiers:
+                acc_timing = {}
+                for acc in accs[MapperBase.op2task[self.cg.g.nodes[x]['op'].name]]:
+                    compute_time = compute_times[x][acc]
+                    comm_time = soc.eval_communication(
+                        (acc, self.cg.g.nodes[x]['task']),
+                        [(self.cg.g.nodes[pred]['acc'][0], self.cg.g.nodes[pred]['task']) for pred in self.cg.g.pred[x]]
+                    )
+                    acc_timing[acc] = compute_time + comm_time
+                timing.append(acc_timing)
+            resource_usage = [resource_usages[x] for x in frontiers]  
+            _, placement, _, _ = self.scheduler.schedule(2, machines, resource_constraint, resource_usage, timing)
+            
+            candidate = tuple((placement[i][0], placement[i][1][0]) for i in range(len(frontiers)))
+            elapsed_time = self.commit(soc, frontiers, candidate, False)
+            
+            l = len(frontiers)
+            for i in range(l):
+                x = frontiers[i]
+                for succ in self.cg.g.succ[x]:
+                    pred_cnt[succ] -= 1
+                    if pred_cnt[succ] == 0:
+                        frontiers.append(succ)
+            frontiers = frontiers[l:]
+        return elapsed_time 
 def get_graph(path: str):
     convertor = ONNXConvertor(path, inference=True)
     graph = convertor.parse()

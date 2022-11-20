@@ -7,7 +7,7 @@ from .op_base import OpBase
 from .tensor import Tensor, Attribute
 from ..program_ir import ConstFloat, ConstInt, ConstString
 from .quantize import OpQuantParam, TensorQuantParam
-
+from functools import reduce
 
 __all__ = ["OpName", "all_ops_in" "NamedOp", "ConvOp", "ActivationAttr"]
 
@@ -181,7 +181,21 @@ class NamedOp(OpBase):
             m,k = self.inputs['inputs'].shape 
             K,n = self.inputs['weight'].shape 
             M,N = self.outputs['output'].shape 
-            return {'M': m, 'N': n, 'K': k}
+            return {'B': 1, 'M': m, 'N': n, 'K': k}
+        elif self.name == OpName.MatrixOp.MatMul:
+            input_shape = self.inputs['lhs'].shape 
+            weight_shape = self.inputs['rhs'].shape 
+            output_shape = self.outputs['output'].shape 
+            b = reduce(lambda x, y: x * y, input_shape[:-2], 1)
+            m,k = input_shape[-2:]  
+            K,n = weight_shape[-2:] 
+            B = reduce(lambda x,y: x*y, output_shape[:-2], 1)
+            M,N = output_shape[-2:]
+            assert b == B 
+            assert k == K 
+            assert n == N 
+            assert m == M
+            return {'B': B, 'M': M, 'N': N, 'K': K}
         elif self.name == OpName.ConvOp.DepthwiseConv2d:
             n,c,h,w=self.inputs['inputs'].shape 
             C,m,r,s=self.inputs['weight'].shape 
