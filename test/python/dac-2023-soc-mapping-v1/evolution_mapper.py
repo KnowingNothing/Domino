@@ -42,10 +42,10 @@ class Individual:
         return f'lat={self.latency},ave_occupancy={np.mean([x[0]for x in self.layers])}'
     
 class Population:
-    num_generations = 4
-    size = 4
+    num_generations = 20
+    size = 8
     mutate_rate = 0.3
-    layer_mutate_rate = 0.5
+    layer_mutate_rate = 0.8
     
     def __init__(self):
         self.population:List[Individual] = list()
@@ -431,8 +431,8 @@ class EvolutionMapper(MapperBase):
         for r, task_placement, task_timing in groups:
             group = self.topo_order[r[0]:r[1]]
             group.sort(key=lambda t: task_timing[t])
-            # complete_time = self.commit(soc, group, [task_placement[i] for i in group])
-            complete_time = self.commit_rr(soc, group)
+            complete_time = self.commit(soc, group, [task_placement[i] for i in group])
+            # complete_time = self.commit_rr(soc, group)
 
         if self.file_path is not None:
             with open(self.file_path, 'wb') as f:
@@ -444,8 +444,8 @@ class EvolutionMapper(MapperBase):
     def init_population(self):
         pop = Population()
         for _ in range(Population.size):
-            # pop.add(self.eval(self.topo_sort(self.cg.g)))
-            pop.add(self.eval([self.dfs, self.dfs_reversed][random.randint(0,1)](self.cg.g)))
+            pop.add(self.eval(self.dfs(self.cg.g)))
+            #pop.add(self.eval(self.bfs_dfs(self.cg.g)))
         return pop 
     
     def eval(self, topo_order:List[int]):
@@ -566,7 +566,7 @@ class EvolutionMapper(MapperBase):
                 if best_idv.latency > offspring.latency:
                     best_idv = offspring
             pop = new_pop
-            
+        self.best_lats.append(pop.get_best_lat())
         return best_idv
     
 class SimplePlacer(PlacerBase):

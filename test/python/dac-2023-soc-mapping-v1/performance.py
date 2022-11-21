@@ -114,8 +114,8 @@ def run(alg: str, model_tag: str, soc_tag: str, bandwidth: str, verbose = False,
     os.system("mkdir -p profile")
     with open(f'profile/{filename}.pkl', 'wb') as f:
         pkl.dump(profile, f)
-    # if alg == 'COMB':
-    #     mapper.export(filename)
+    if alg == 'COMB':
+        mapper.export(filename)
     print("compute uses ", complete_time, 'energy: ', energy_consumption)
     return complete_time, energy_consumption
 
