@@ -11,12 +11,17 @@
 
 namespace domino {
 
-#define X_DECL_BLOCK(X) \
-  class X##Node;        \
-  using X = Ref<X##Node>;
-#include <x_macro/block.x.h>
+/// Don't use X_Macro for reference declaration
+/// for better debug experience
+
+// #define X_DECL_BLOCK(X) \
+//   class X##Node;        \
+//   using X = Ref<X##Node>;
+// #include <x_macro/block.x.h>
 
 class BlockNode : public IRBaseNode {};
+
+using Block = Ref<BlockNode>;
 
 class AttrBlockNode : public BlockNode {
  public:
@@ -28,6 +33,8 @@ class AttrBlockNode : public BlockNode {
   AttrBlockNode(std::string key, IRBase obj, IRBase value, Block body)
       : key(std::move(key)), obj(std::move(obj)), value(std::move(value)), body(std::move(body)) {}
 };
+
+using AttrBlock = Ref<AttrBlockNode>;
 
 class NdForBlockNode : public BlockNode {
  public:
@@ -41,6 +48,8 @@ class NdForBlockNode : public BlockNode {
       : iters(std::move(iters)), ranges(std::move(ranges)), body(std::move(body)), level(level) {}
 };
 
+using NdForBlock = Ref<NdForBlockNode>;
+
 class BranchBlockNode : public BlockNode {
  public:
   std::vector<Expr> conds;
@@ -53,6 +62,8 @@ class BranchBlockNode : public BlockNode {
         false_branch(std::move(false_branch)) {}
 };
 
+using BranchBlock = Ref<BranchBlockNode>;
+
 class SeqBlockNode : public BlockNode {
  public:
   Block first;
@@ -61,12 +72,26 @@ class SeqBlockNode : public BlockNode {
   SeqBlockNode(Block first, Block second) : first(std::move(first)), second(std::move(second)) {}
 };
 
+using SeqBlock = Ref<SeqBlockNode>;
+
+class SpatialBlockNode : public BlockNode {
+ public:
+  std::vector<Block> blocks;
+
+  SpatialBlockNode(const std::vector<Block>& blocks) : blocks(blocks) {}
+  SpatialBlockNode(std::initializer_list<Block> blocks) : blocks(std::move(blocks)) {}
+};
+
+using SpatialBlock = Ref<SpatialBlockNode>;
+
 class AtomBlockNode : public BlockNode {
  public:
   Stmt stmt;
 
   AtomBlockNode(Stmt stmt) : stmt(std::move(stmt)) {}
 };
+
+using AtomBlock = Ref<AtomBlockNode>;
 
 class ReMapBlockNode : public BlockNode {
  public:
@@ -75,9 +100,14 @@ class ReMapBlockNode : public BlockNode {
   std::vector<Expr> btrans;  // the backward transformation, optionally null
   Block body;
 
+  ReMapBlockNode(std::vector<Var> vars, std::vector<Expr> ftrans)
+      : vars(std::move(vars)), ftrans(std::move(ftrans)), btrans() {}
+
   ReMapBlockNode(std::vector<Var> vars, std::vector<Expr> ftrans, std::vector<Expr> btrans)
       : vars(std::move(vars)), ftrans(std::move(ftrans)), btrans(std::move(btrans)) {}
 };
+
+using ReMapBlock = Ref<ReMapBlockNode>;
 
 class AllocBlockNode : public BlockNode {
  public:
@@ -92,6 +122,8 @@ class AllocBlockNode : public BlockNode {
         scope(std::move(scope)),
         body(std::move(body)) {}
 };
+
+using AllocBlock = Ref<AllocBlockNode>;
 
 }  // namespace domino
 

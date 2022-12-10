@@ -8,12 +8,17 @@ namespace domino {
 
 namespace arch {
 
-#define X_DECL_ARCH(X) \
-  class X##Node;       \
-  using X = Ref<X##Node>;
-#include <x_macro/arch.x.h>
+/// Don't use X_Macro for reference declaration
+/// for better debug experience
+
+// #define X_DECL_ARCH(X) \
+//   class X##Node;       \
+//   using X = Ref<X##Node>;
+// #include <x_macro/arch.x.h>
 
 class ArchNode : public IRBaseNode {};
+
+using Arch = Ref<ArchNode>;
 
 enum class CompLevel : int { dL0 = 0, dL1 = 1, dL2 = 2, dL3 = 3, dL4 = 4, dL5 = 5, dUNKNOWN = 255 };
 
