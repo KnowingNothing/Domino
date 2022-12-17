@@ -23,29 +23,24 @@ include_directories(${CMAKE_SOURCE_DIR}/3rdparty/fmt/include)
 include_directories(${CMAKE_SOURCE_DIR}/3rdparty/pybind11/include)
 include_directories(${CMAKE_SOURCE_DIR}/3rdparty/range-v3/include)
 
-
-
 file(GLOB_RECURSE ALL_CXX_SRC_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
 message(STATUS "Build with source files ${ALL_CXX_SRC_FILES}")
 file(GLOB_RECURSE ALL_CXX_TEST_FILES ${CMAKE_SOURCE_DIR}/test/cpp/*.cc)
 
-# pybind11_add_module(domino MODULE ${ALL_CXX_SRC_FILES})
-
-
+pybind11_add_module(domino MODULE ${ALL_CXX_SRC_FILES})
 
 # link_libraries(${PYTHON_LINK_DIRS})
 # link_libraries(fmt)
-add_library(domino SHARED ${ALL_CXX_SRC_FILES})
-target_link_libraries(domino fmt)
+# add_library(domino SHARED ${ALL_CXX_SRC_FILES})
+target_link_libraries(domino PUBLIC fmt)
 message(STATUS "Link Python libs ${PYTHON_LIBRARIES}")
-target_link_libraries(domino ${PYTHON_LIBRARIES})
+target_link_libraries(domino PUBLIC ${PYTHON_LIBRARIES})
 
 
-enable_testing()
-add_executable(test_all ${ALL_CXX_TEST_FILES})
+# enable_testing()
+# add_executable(test_all ${ALL_CXX_SRC_FILES} ${ALL_CXX_TEST_FILES})
 
-target_link_libraries(test_all domino)
-target_link_libraries(test_all GTest::gtest_main)
+# target_link_libraries(test_all fmt GTest::gtest_main)
 
-include(GoogleTest)
-gtest_discover_tests(test_all)
+# include(GoogleTest)
+# gtest_discover_tests(test_all)

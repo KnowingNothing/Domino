@@ -5,8 +5,12 @@ namespace py = pybind11;
 
 namespace domino {
 
-PYBIND11_MODULE(domino, m) {
+int add(int i, int j) {
+    return i + j;
+}
 
+PYBIND11_MODULE(domino, m) {
+    m.def("add", &add, "A function for add.");
 }
 
 }  // namespace domino
