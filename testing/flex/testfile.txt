@@ -1,0 +1,3 @@
+The problem is that you're compiling hug.yy.c with g++ (treating it as C++) instead of gcc. This is the file that defines yylex, so by compiling it as C++ you end up with a C++ yylex function while the other files are looking for a C yylex function.
+
+Try sticking extern "C" int yylex(); into the first section of your hug.l file so that it will use C linkage for yylex instead of C++
