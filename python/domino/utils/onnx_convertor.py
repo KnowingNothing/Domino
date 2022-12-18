@@ -992,7 +992,7 @@ class DropoutConvertor(ONNXOpConvertor):
 
         mask = Tensor(
             data.shape,
-            DType.from_string("int32"),
+            DType.make("int32"),
             layout=data.layout,
             name=output_names[1],
             tensor_idx=output_names[1]

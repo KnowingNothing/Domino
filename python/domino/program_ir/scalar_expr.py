@@ -4,7 +4,7 @@ from ..base import IRBase
 from ..type_system.dtype import DTypeKind, DType
 
 # helper function
-_dtype = DType.from_string
+_dtype = DType.make
 
 
 class ExprBase(IRBase):

@@ -709,14 +709,14 @@ def post_process(nx_graph):
 
 
 def test_layerwise_mapping():
-    # config_path = "new_resnet18_pareto.json"
-    # model_path = "raw_resnet18.onnx"
+    config_path = "new_resnet18_pareto.json"
+    model_path = "raw_resnet18.onnx"
     # config_path = "new_mobilenetv2_pareto.json"
     # model_path = "raw_mobilenetv2.onnx"
     # config_path = "new_resnet50_pareto.json"
     # model_path = "raw_resnet50.onnx"
-    config_path = "w_a_joint_yolov5_pareto.json"
-    model_path = "yolov5s_640x640.simplify.onnx"
+    # config_path = "w_a_joint_yolov5_pareto.json"
+    # model_path = "yolov5s_640x640.simplify.onnx"
 
     graph = get_graph(model_path)
     configs = get_precision_configs(config_path)

@@ -1,5 +1,11 @@
 # Domino
 
+## Download
+```sh
+git clone git@github.com:KnowingNothing/Domino.git
+git submodule update --init --recursive
+```
+
 ## Build & Test
 
 ```shell
@@ -7,6 +13,12 @@ $ mkdir build && cd build
 $ cmake ..
 $ make
 $ ctest
+```
+
+## Setup environment
+The environment for Python3
+```sh
+source setup-env.sh
 ```
 
 ## Python part dependencies

@@ -32,21 +32,21 @@ message(STATUS "Found test source files ${ALL_CXX_TEST_FILES}")
 
 # link_libraries(${PYTHON_LINK_DIRS})
 # link_libraries(fmt)
-add_library(dominoc SHARED ${DOMINO_CXX_SRC_FILES})
-target_link_libraries(dominoc PUBLIC fmt)
+add_library(domino_core SHARED ${DOMINO_CXX_SRC_FILES})
+target_link_libraries(domino_core PUBLIC fmt)
 # target_link_libraries(Domino PUBLIC ${PYTHON_LIBRARIES})
 
-pybind11_add_module(domino MODULE ${PYBIND_CXX_SRC_FILES})
+pybind11_add_module(dominoc MODULE ${PYBIND_CXX_SRC_FILES})
 
-target_link_libraries(domino PUBLIC dominoc)
-target_link_libraries(domino PUBLIC fmt)
+target_link_libraries(dominoc PUBLIC domino_core)
+target_link_libraries(dominoc PUBLIC fmt)
 message(STATUS "Link Python libs ${PYTHON_LIBRARIES}")
-target_link_libraries(domino PUBLIC ${PYTHON_LIBRARIES})
+target_link_libraries(dominoc PUBLIC ${PYTHON_LIBRARIES})
 
 enable_testing()
 add_executable(test_all ${ALL_CXX_TEST_FILES})
 
-target_link_libraries(test_all dominoc GTest::gtest_main)
+target_link_libraries(test_all domino_core GTest::gtest_main)
 
 include(GoogleTest)
 gtest_discover_tests(test_all)

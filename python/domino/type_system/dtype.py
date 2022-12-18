@@ -1,20 +1,10 @@
 import enum
 from typing import Union
-from xml.dom.pulldom import default_bufsize
+import dominoc
 from ..base import TypeBase
 
 
-class DTypeKind(enum.Enum):
-    Int = 0
-    UInt = 1
-    Float = 2
-    BFloat = 3
-    TFloat = 4
-    MemRef = 5
-    String = 6
-    Complex = 7
-    IGNORE = 254
-    UNKNOWN = 255
+DTypeKind = dominoc.DTypeKind
 
 
 DTYPE_KIND_TO_NAME = {
@@ -31,53 +21,7 @@ DTYPE_KIND_TO_NAME = {
 }
 
 
-class DType(TypeBase):
-    """DType
-    Basic scalar data type
-    """
-
-    def __init__(self, type_kind: DTypeKind, bits: int, lane: int) -> None:
-        super(DType, self).__init__()
-        self.type_kind = type_kind
-        self.bits = bits
-        self.lane = lane
-
-    def is_int(self) -> bool:
-        return self.type_kind == DTypeKind.Int
-
-    def is_uint(self) -> bool:
-        return self.type_kind == DTypeKind.UInt
-
-    def is_float(self) -> bool:
-        return self.type_kind == DTypeKind.Float
-
-    def is_bfloat(self) -> bool:
-        return self.type_kind == DTypeKind.BFloat
-
-    def is_tfloat(self) -> bool:
-        return self.type_kind == DTypeKind.TFloat
-
-    def is_memref(self) -> bool:
-        return self.type_kind == DTypeKind.MemRef
-
-    def is_string(self) -> bool:
-        return self.type_kind == DTypeKind.String
-
-    def is_complex(self) -> bool:
-        return self.type_kind == DTypeKind.Complex
-
-    def is_ignore(self) -> bool:
-        return self.type_kind == DTypeKind.IGNORE
-
-    def is_unknown(self) -> bool:
-        return self.type_kind == DTypeKind.UNKNOWN
-
-    def copy(self) -> "DType":
-        return self.__class__(self.type_kind, self.bits, self.lane)
-
-    def with_lanes(self, lane: int) -> "DType":
-        return self.__class__(self.type_kind, self.bits, lane)
-
+class DType(dominoc.DType, TypeBase):
     def __eq__(self, others: "DType") -> bool:
         return (self.type_kind == others.type_kind) and (self.bits == others.bits) and (self.lane == others.lane)
 

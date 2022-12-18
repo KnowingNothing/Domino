@@ -1,6 +1,8 @@
 #ifndef DOMINO_EXPR_H
 #define DOMINO_EXPR_H
 
+#include <type_system/dtype.h>
+
 #include <ir_base.h>
 #include <ref.h>
 
