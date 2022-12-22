@@ -1,11 +1,11 @@
 import enum
 from typing import Union, List, Optional, Tuple
 from ..base import TypeBase
-from ..program_ir.scalar_expr import ExprBase
+from ..program_ir.scalar_expr import Expr
 from .dtype import DType, GeneralDType
 
 
-ShapeType = Union[List[Union[int, ExprBase]], Tuple[Union[int, ExprBase]]]
+ShapeType = Union[List[Union[int, Expr]], Tuple[Union[int, Expr]]]
 
 
 class TType(TypeBase):

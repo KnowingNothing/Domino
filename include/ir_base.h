@@ -8,8 +8,11 @@ namespace domino {
 class IRBaseNode {
  public:
   virtual ~IRBaseNode() = default;
+  operator std::string() const {
+    return "IRBaseNode()";
+  }
 };
-using IRBase = Ref<IRBaseNode>;
+typedef Ref<IRBaseNode> IRBase;
 
 std::ostream& operator<<(std::ostream&, IRBase);
 std::string repr(IRBase);

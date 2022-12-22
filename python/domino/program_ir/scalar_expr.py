@@ -1,4 +1,5 @@
 import enum
+from dominoc import ir
 from typing import Any, List, Union, Tuple
 from ..base import IRBase
 from ..type_system.dtype import DTypeKind, DType
@@ -6,13 +7,22 @@ from ..type_system.dtype import DTypeKind, DType
 # helper function
 _dtype = DType.make
 
+__all__ = [
+    "Expr", "BinExpr", "UniExpr", "TerExpr", "ConstExpr", "MutableExpr", "MemRef",
+    "Add", "Sub", "Mul", "Div", "Mod", "FloorDiv", "FloorMod", "And", "Or",
+    "XOr", "BitAnd", "BitOr", "BitXOr", "GT", "GE", "LT", "LE", "EQ", "NE",
+    "Cast", "Broadcast", "Neg", "Not", "BitNot", "Ceil", "Floor",
+    "Select",
+    "Range", "ExprList",
+    "CondAll", "CondAny",
+    "ConstInt", "ConstUInt", "ConstFloat", "ConstBFloat", "ConstTFloat", "ConstString", "make_const",
+    "Var", "Iterator", "NdLoad", "Load", "MapVar", "Slice", "MemSlice", "Call"
+]
 
-class ExprBase(IRBase):
+
+class Expr(ir.Expr):
     def __init__(self, dtype: DType):
-        self.dtype: DType = dtype
-
-    def is_const(self):
-        return False
+        super(Expr, self).__init__(dtype)
 
     def __mul__(self, others):
         if isinstance(others, self.__class__):
@@ -42,150 +52,160 @@ class ExprBase(IRBase):
 ##=-------------------------------------------------------------------=##
 
 
-class BinExpr(ExprBase):
-    def __init__(self, dtype: DType, a: ExprBase, b: ExprBase):
-        super(BinExpr, self).__init__(dtype)
-        assert a.dtype == b.dtype, (
-            f"Binary Expr expects the same type for operands, but get {a.dtype} and {b.dtype}")
-        self.a: ExprBase = a
-        self.b: ExprBase = b
+class BinExpr(ir.BinExpr, Expr):
+    def __init__(self, dtype: DType, a: Expr, b: Expr):
+        ir.BinExpr.__init__(self, dtype, a, b)
+        Expr.__init__(self, dtype)
 
 
-class UniExpr(ExprBase):
-    def __init__(self, dtype: DType, a: ExprBase):
-        super(UniExpr, self).__init__(dtype)
-        self.a: ExprBase = a
+class UniExpr(ir.UniExpr, Expr):
+    def __init__(self, dtype: DType, a: Expr):
+        ir.UniExpr.__init__(self, dtype, a)
+        Expr.__init__(self, dtype)
 
 
-class TerExpr(ExprBase):
-    def __init__(self, dtype: DType, a: ExprBase, b: ExprBase, c: ExprBase):
-        super(TerExpr, self).__init__(dtype)
-        self.a: ExprBase = a
-        self.b: ExprBase = b
-        self.c: ExprBase = c
+class TerExpr(ir.TerExpr, Expr):
+    def __init__(self, dtype: DType, a: Expr, b: Expr, c: Expr):
+        ir.TerExpr.__init__(dtype, a, b, c)
+        Expr.__init__(self, dtype)
 
 
-class ConstExpr(ExprBase):
-    def __init__(self, dtype: DType, value: Any):
-        super(ConstExpr, self).__init__(dtype)
-        self.value: Any = value
-
-    def is_const(self):
-        return True
-
-    def __str__(self):
-        return str(self.value)
-
-
-class MutableExpr(ExprBase):
+class ConstExpr(ir.ConstExpr, Expr):
     def __init__(self, dtype: DType):
-        super(MutableExpr, self).__init__(dtype)
+        ir.ConstExpr.__init__(self, dtype)
+        Expr.__init__(self, dtype)
 
 
-class MemRef(ExprBase):
-    def __init__(self, var: "Var"):
-        super().__init__(_dtype("mem_ref"))
-        self.var: "Var" = var
+class MutableExpr(ir.MutableExpr, Expr):
+    def __init__(self, dtype: DType):
+        ir.MutableExpr.__init__(self, dtype)
+        Expr.__init__(self, dtype)
 
+
+class MemRef(ir.MemRef, Expr):
+    def __init__(self, var: "Var", offset: Expr):
+        ir.MemRef.__init__(self, var, offset)
+        Expr.__init__(self, _dtype("mem_ref"))
 
 ##=-------------------------------------------------------------------=##
 ##
 # Binary Operation IR Node
 ##
 ##=-------------------------------------------------------------------=##
-class Add(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(Add, self).__init__(a.dtype, a, b)
 
 
-class Sub(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(Sub, self).__init__(a.dtype, a, b)
+class Add(ir.Add, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.Add.__init__(self, a, b)
+        BinExpr.__init__(self, a.dtype, a, b)
 
 
-class Mul(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(Mul, self).__init__(a.dtype, a, b)
+class Sub(ir.Sub, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.Sub.__init__(self, a, b)
+        BinExpr.__init__(self, a.dtype, a, b)
 
 
-class Div(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(Div, self).__init__(a.dtype, a, b)
+class Mul(ir.Mul, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.Mul.__init__(self, a, b)
+        BinExpr.__init__(self, a.dtype, a, b)
 
 
-class Mod(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(Mod, self).__init__(a.dtype, a, b)
+class Div(ir.Div, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.Div.__init__(self, a, b)
+        BinExpr.__init__(self, a.dtype, a, b)
 
 
-class FloorDiv(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(FloorDiv, self).__init__(a.dtype, a, b)
+class Mod(ir.Mod, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.Mod.__init__(self, a, b)
+        BinExpr.__init__(self, a.dtype, a, b)
 
 
-class FloorMod(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(FloorMod, self).__init__(a.dtype, a, b)
+class FloorDiv(ir.FloorDiv, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.FloorDiv.__init__(self, a, b)
+        BinExpr.__init__(self, a.dtype, a, b)
 
 
-class And(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(And, self).__init__(_dtype("bool"), a, b)
+class FloorMod(ir.FloorMod, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.FloorMod.__init__(self, a, b)
+        BinExpr.__init__(self, a.dtype, a, b)
 
 
-class Or(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(Or, self).__init__(_dtype("bool"), a, b)
+class And(ir.And, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.And.__init__(self, a, b)
+        BinExpr.__init__(self, a.dtype, a, b)
 
 
-class XOr(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(XOr, self).__init__(_dtype("bool"), a, b)
+class Or(ir.Or, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.Or.__init__(self, a, b)
+        BinExpr.__init__(self, self.dtype, a, b)
 
 
-class BitAnd(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(BitAnd, self).__init__(a.dtype, a, b)
+class XOr(ir.XOr, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.XOr.__init__(self, a, b)
+        BinExpr.__init__(self, self.dtype, a, b)
 
 
-class BitOr(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(BitOr, self).__init__(a.dtype, a, b)
+class BitAnd(ir.BitAnd, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.BitAnd.__init__(self, a, b)
+        BinExpr.__init__(self, self.dtype, a, b)
 
 
-class BitXOr(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(BitXOr, self).__init__(a.dtype, a, b)
+class BitOr(ir.BitOr, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.BitOr.__init__(self, a, b)
+        BinExpr.__init__(self, self.dtype, a, b)
 
 
-class GT(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(GT, self).__init__(_dtype("bool"), a, b)
+class BitXOr(ir.BitXOr, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.BitXOr.__init__(self, a, b)
+        BinExpr.__init__(self, self.dtype, a, b)
 
 
-class GE(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(GE, self).__init__(_dtype("bool"), a, b)
+class GT(ir.GT, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.GT.__init__(self, a, b)
+        BinExpr.__init__(self, self.dtype, a, b)
 
 
-class LT(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(LT, self).__init__(_dtype("bool"), a, b)
+class GE(ir.GE, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.GE.__init__(self, a, b)
+        BinExpr.__init__(self, self.dtype, a, b)
 
 
-class LE(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(LE, self).__init__(_dtype("bool"), a, b)
+class LT(ir.LT, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.LT.__init__(self, a, b)
+        BinExpr.__init__(self, self.dtype, a, b)
 
 
-class EQ(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(EQ, self).__init__(_dtype("bool"), a, b)
+class LE(ir.LE, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.LE.__init__(self, a, b)
+        BinExpr.__init__(self, self.dtype, a, b)
 
 
-class NE(BinExpr):
-    def __init__(self, a: ExprBase, b: ExprBase):
-        super(NE, self).__init__(_dtype("bool"), a, b)
+class EQ(ir.EQ, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.EQ.__init__(self, a, b)
+        BinExpr.__init__(self, self.dtype, a, b)
+
+
+class NE(ir.NE, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.NE.__init__(self, a, b)
+        BinExpr.__init__(self, self.dtype, a, b)
 
 
 ##=-------------------------------------------------------------------=##
@@ -193,43 +213,46 @@ class NE(BinExpr):
 # Unary Operation IR Node
 ##
 ##=-------------------------------------------------------------------=##
-class Cast(UniExpr):
-    def __init__(self, dtype: DType, a: ExprBase):
-        super(Cast, self).__init__(dtype, a)
+class Cast(ir.Cast, UniExpr):
+    def __init__(self, dtype: DType, a: Expr):
+        ir.Cast.__init__(self, a)
+        UniExpr.__init__(self, self.dtype, a)
 
 
-class Broadcast(UniExpr):
-    def __init__(self, a: ExprBase, lane: int):
-        super().__init__(a.dtype.with_lanes(lane), a)
+class Broadcast(ir.Broadcast, UniExpr):
+    def __init__(self, a: Expr, lane: int):
+        ir.Broadcast.__init__(self, a)
+        UniExpr.__init__(self, self.dtype, a)
 
 
-class Neg(UniExpr):
-    def __init__(self, a: ExprBase):
-        super(Neg, self).__init__(a.dtype, a)
+class Neg(ir.Neg, UniExpr):
+    def __init__(self, a: Expr):
+        ir.Neg.__init__(self, a)
+        UniExpr.__init__(self, self.dtype, a)
 
 
-class Not(UniExpr):
-    def __init__(self, a: ExprBase):
-        super(Not, self).__init__(_dtype("bool"), a)
+class Not(ir.Not, UniExpr):
+    def __init__(self, a: Expr):
+        ir.Not.__init__(self, a)
+        UniExpr.__init__(self, self.dtype, a)
 
 
-class BitNot(UniExpr):
-    def __init__(self, a: ExprBase):
-        super(BitNot, self).__init__(a.dtype, a)
+class BitNot(ir.BitNot, UniExpr):
+    def __init__(self, a: Expr):
+        ir.BitNot.__init__(self, a)
+        UniExpr.__init__(self, self.dtype, a)
 
 
-class Ceil(UniExpr):
-    def __init__(self, dtype: DType, a: ExprBase):
-        super(Ceil, self).__init__(dtype, a)
-        assert dtype.is_int() or dtype.is_uint(
-        ), f"Ceil output type should be Int or UInt, but get {dtype}"
+class Ceil(ir.Ceil, UniExpr):
+    def __init__(self, dtype: DType, a: Expr):
+        ir.Ceil.__init__(self, a)
+        UniExpr.__init__(self, self.dtype, a)
 
 
-class Floor(UniExpr):
-    def __init__(self, dtype: DType, a: ExprBase):
-        super(Floor, self).__init__(dtype, a)
-        assert dtype.is_int() or dtype.is_uint(
-        ), f"Floor output type should be Int or UInt, but get {dtype}"
+class Floor(ir.Floor, UniExpr):
+    def __init__(self, dtype: DType, a: Expr):
+        ir.Floor.__init__(self, a)
+        UniExpr.__init__(self, self.dtype, a)
 
 
 ##=-------------------------------------------------------------------=##
@@ -237,12 +260,31 @@ class Floor(UniExpr):
 # Ternary Operation IR Node
 ##
 ##=-------------------------------------------------------------------=##
-class Select(TerExpr):
-    def __init__(self, cond: ExprBase, true_branch: ExprBase, false_branch: ExprBase):
-        super(Select, self).__init__(
-            true_branch.dtype, cond, true_branch, false_branch)
-        assert (true_branch.dtype == false_branch.dtype), (
-            f"Select Expr expects the same type for candidates, but get {true_branch.dtype} and {false_branch.dtype}")
+class Select(ir.Select, TerExpr):
+    def __init__(self, cond: Expr, true_branch: Expr, false_branch: Expr):
+        ir.Select.__init__(self, cond, true_branch, false_branch)
+        TerExpr.__init__(self, self.dtype, cond, true_branch, false_branch)
+
+
+##=-------------------------------------------------------------------=##
+##
+# Range IR Node
+##
+##=-------------------------------------------------------------------=##
+class Range(ir.Range, Expr):
+    def __init__(self, beg: Expr, extent: Expr, step: Expr):
+        ir.Range.__init__(self, beg, extent, step)
+        Expr.__init__(self, self.dtype)
+
+
+class ExprList(ir.ExprList, Expr):
+    def __init__(self, args: List[Expr]):
+        ir.ExprList.__init__(self, args)
+        Expr.__init__(self, self.dtype)
+
+    def __getitem__(self, idx):
+        assert idx < len(self.value_list), "Index out of range."
+        return self.value_list[idx]
 
 
 ##=-------------------------------------------------------------------=##
@@ -250,16 +292,16 @@ class Select(TerExpr):
 # Variable Operands Operation IR Node
 ##
 ##=-------------------------------------------------------------------=##
-class CondAll(ExprBase):
-    def __init__(self, phases: List[ExprBase]):
-        super(CondAll, self).__init__(_dtype("bool"))
-        self.phases = phases
+class CondAll(ir.CondAll, Expr):
+    def __init__(self, phases: List[Expr]):
+        ir.CondAll.__init__(self, phases)
+        Expr.__init__(self, self.dtype)
 
 
-class CondAny(ExprBase):
-    def __init__(self, phases: List[ExprBase]):
-        super(CondAny, self).__init__(_dtype("bool"))
-        self.phases = phases
+class CondAny(ir.CondAny, Expr):
+    def __init__(self, phases: List[Expr]):
+        ir.CondAny.__init__(self, phases)
+        Expr.__init__(self, self.dtype)
 
 
 ##=-------------------------------------------------------------------=##
@@ -267,38 +309,40 @@ class CondAny(ExprBase):
 # Constant IR Node
 ##
 ##=-------------------------------------------------------------------=##
-class ConstInt(ConstExpr):
+class ConstInt(ir.ConstInt, ConstExpr):
     def __init__(self, value: int, bits: int = 32, lane: int = 1):
-        super(ConstInt, self).__init__(DType(DTypeKind.Int, bits, lane), value)
+        ir.ConstInt.__init__(self, value, bits, lane)
+        ConstExpr.__init__(self, self.dtype)
 
 
-class ConstUInt(ConstExpr):
+class ConstUInt(ir.ConstUInt, ConstExpr):
     def __init__(self, value: int, bits: int = 32, lane: int = 1):
-        super(ConstUInt, self).__init__(
-            DType(DTypeKind.UInt, bits, lane), value)
+        ir.ConstUInt.__init__(self, value, bits, lane)
+        ConstExpr.__init__(self, self.dtype)
 
 
-class ConstFloat(ConstExpr):
+class ConstFloat(ir.ConstFloat, ConstExpr):
     def __init__(self, value: float, bits: int = 32, lane: int = 1):
-        super(ConstFloat, self).__init__(
-            DType(DTypeKind.Float, bits, lane), value)
+        ir.ConstFloat.__init__(self, value, bits, lane)
+        ConstExpr.__init__(self, self.dtype)
 
 
-class ConstBFloat(ConstExpr):
+class ConstBFloat(ir.ConstBFloat, ConstExpr):
     def __init__(self, value: float, bits: int = 16, lane: int = 1):
-        super(ConstBFloat, self).__init__(
-            DType(DTypeKind.BFloat, bits, lane), value)
+        ir.ConstBFloat.__init__(self, value, bits, lane)
+        ConstExpr.__init__(self, self.dtype)
 
 
-class ConstTFloat(ConstExpr):
+class ConstTFloat(ir.ConstTFloat, ConstExpr):
     def __init__(self, value: float, bits: int = 32, lane: int = 1):
-        super(ConstTFloat, self).__init__(
-            DType(DTypeKind.TFloat, bits, lane), value)
+        ir.ConstTFloat.__init__(self, value, bits, lane)
+        ConstExpr.__init__(self, self.dtype)
 
 
-class ConstString(ConstExpr):
+class ConstString(ir.ConstString, ConstExpr):
     def __init__(self, value: str):
-        super(ConstString, self).__init__(_dtype("string"), value)
+        ir.ConstString.__init__(self, value)
+        ConstExpr.__init__(self, self.dtype)
 
 
 def make_const(value, dtype):
@@ -321,43 +365,13 @@ def make_const(value, dtype):
 
 ##=-------------------------------------------------------------------=##
 ##
-# Range IR Node
-##
-##=-------------------------------------------------------------------=##
-class Range(ExprBase):
-    def __init__(self, beg: ExprBase, extent: ExprBase, step: ExprBase):
-        super(Range, self).__init__(_dtype("ignore"))
-        self.beg = beg
-        self.extent = extent
-        self.step = step
-
-    def __str__(self) -> str:
-        return f"Range(beg={self.beg},ext={self.extent},step={self.step})"
-
-
-class ExprList(ExprBase):
-    def __init__(self, args: List[ExprBase]):
-        super(ExprList, self).__init__(_dtype("ignore"))
-        self.value_list = args
-        
-    def __getitem__(self, idx):
-        assert idx < len(self.value_list), "Index out of range."
-        return self.value_list[idx]
-
-    def __str__(self):
-        return "[" + ",".join([str(x) for x in self.value_list]) + "]"
-
-
-##=-------------------------------------------------------------------=##
-##
 # Mutable IR Node
 ##
 ##=-------------------------------------------------------------------=##
-class Var(MutableExpr):
+class Var(ir.Var, MutableExpr):
     def __init__(self, dtype: Union[DType, str], name: str = ""):
-        super(Var, self).__init__(_dtype(dtype)
-                                  if isinstance(dtype, str) else dtype)
-        self.name = name
+        ir.Var.__init__(self, dtype, name)
+        MutableExpr.__init__(self, self.dtype)
 
 
 ##=-------------------------------------------------------------------=##
@@ -365,28 +379,27 @@ class Var(MutableExpr):
 # Iterator IR Node
 ##
 ##=-------------------------------------------------------------------=##
-class IterTypeKind(enum.Enum):
-    Spatial = 0
-    Reduce = 1
+# class IterTypeKind(enum.Enum):
+#     Spatial = 0
+#     Reduce = 1
+
+IterTypeKind = ir.IterTypeKind
 
 
-class Iterator(ExprBase):
+class Iterator(ir.Iterator, Expr):
     def __init__(self, var: Var, range: Union[Range, List, Tuple], iter_type: IterTypeKind):
-        super(Iterator, self).__init__(var.dtype)
-        self.var = var
-        if isinstance(range, Range):
-            self.range = range
-        else:
+        if not isinstance(range, Range):
             if len(range) == 2:
-                self.range = Range(
+                range = Range(
                     ConstInt(range[0]), ConstInt(range[1]), ConstInt(1))
             elif len(range) == 3:
-                self.range = Range(ConstInt(range[0]), ConstInt(
+                range = Range(ConstInt(range[0]), ConstInt(
                     range[1]), ConstInt(range[2]))
             else:
                 raise RuntimeError(
                     "Range should be [beg, extent] or [beg, extent, step].")
-        self.iter_type = iter_type
+        ir.Iterator.__init__(self, var, range, iter_type)
+        Expr.__init__(self, self.dtype)
 
 
 ##=-------------------------------------------------------------------=##
@@ -394,18 +407,16 @@ class Iterator(ExprBase):
 # Load IR Node
 ##
 ##=-------------------------------------------------------------------=##
-class NdLoad(ExprBase):
-    def __init__(self, mem_ref: MemRef, indices: List[ExprBase]):
-        super(NdLoad, self).__init__(mem_ref.var.dtype)
-        self.mem_ref = mem_ref
-        self.indices = indices
+class NdLoad(ir.NdLoad, Expr):
+    def __init__(self, mem_ref: MemRef, indices: List[Expr]):
+        ir.NdLoad.__init__(self, mem_ref, indices)
+        Expr.__init__(self, self.dtype)
 
 
-class Load(ExprBase):
-    def __init__(self, mem_ref: MemRef, addr: ExprBase):
-        super(Load, self).__init__(mem_ref.var.dtype)
-        self.mem_ref = mem_ref
-        self.addr = addr
+class Load(ir.Load, Expr):
+    def __init__(self, mem_ref: MemRef, addr: Expr):
+        ir.Load.__init__(self, mem_ref, addr)
+        Expr.__init__(self, self.dtype)
 
 
 ##=-------------------------------------------------------------------=##
@@ -413,11 +424,10 @@ class Load(ExprBase):
 # Map IR Node
 ##
 ##=-------------------------------------------------------------------=##
-class MapVar(ExprBase):
-    def __init__(self, name: str, expr: ExprBase):
-        super(MapVar, self).__init__(expr.dtype)
-        self.var = Var(expr.dtype, name)
-        self.expr = expr
+class MapVar(ir.MapVar, Expr):
+    def __init__(self, name: str, expr: Expr):
+        ir.MapVar.__init__(self, name, expr)
+        Expr.__init__(self, self.dtype)
 
 
 ##=-------------------------------------------------------------------=##
@@ -425,10 +435,19 @@ class MapVar(ExprBase):
 # Memory Reference IR Node
 ##
 ##=-------------------------------------------------------------------=##
-class MemSlice(MemRef):
-    def __init__(self, var: Var, slices: List[Range]):
-        super(MemSlice, self).__init__(var)
-        self.slices: List[Range] = slices
+class Slice(ir.Slice, Expr):
+    def __init__(self, indices: List[Range]):
+        ir.Slice.__init__(self, indices)
+        Expr.__init__(self, self.dtype)
+
+
+class MemSlice(ir.MemSlice, MemRef):
+    def __init__(self, var: Var, offset: Expr, slices: Union[Slice, List[Range]]):
+        if isinstance(slices, Slice):
+            ir.MemSlice.__init__(self, var, offset, slices)
+        else:
+            ir.MemSlice.__init__(self, var, offset, Slice(slices))
+        MemRef.__init__(self, var, offset)
 
 
 ##=-------------------------------------------------------------------=##
@@ -436,8 +455,9 @@ class MemSlice(MemRef):
 # Call IR Node
 ##
 ##=-------------------------------------------------------------------=##
-class Call(ExprBase):
-    def __init__(self, dtype: DType, name: str, args: List[Union[ExprBase, str]]):
-        super(Call, self).__init__(dtype)
-        self.name: str = name
-        self.args: List[Union[ExprBase, str]] = args
+class Call(ir.Call, Expr):
+    def __init__(self, dtype: DType, name: str, args: List[Union[Expr, str]]):
+        new_args = [arg if isinstance(
+            arg, Expr) else ConstString(arg) for arg in args]
+        ir.Call.__init__(self, dtype, name, ExprList(new_args))
+        Expr.__init__(self, self.dtype)

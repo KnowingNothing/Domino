@@ -15,8 +15,7 @@ class Ref {
 
   std::shared_ptr<T> shr_ptr_;
 
-  Ref(std::shared_ptr<T> sp) : shr_ptr_(sp) {}
-  Ref(T* ptr) : shr_ptr_(ptr) {}
+  Ref(std::shared_ptr<T> &&sp) : shr_ptr_(std::move(sp)) {}
 
  public:
   Ref() = default;
@@ -24,6 +23,7 @@ class Ref {
 
   Ref(const Ref&) = default;
   Ref(Ref&&) = default;
+  Ref(T* ptr) : shr_ptr_(ptr) {}
 
   template <typename U, typename = std::enable_if_t<std::is_base_of_v<T, U>>>
   Ref(const Ref<U>& rhs) : shr_ptr_(std::static_pointer_cast<T>(rhs.shr_ptr_)) {}
@@ -62,6 +62,10 @@ class Ref {
   template <class... Args>
   static Ref make(Args&&... args) {
     return Ref(std::make_shared<T>(std::forward<Args>(args)...));
+  }
+
+  operator std::string() const {
+    return std::string(*shr_ptr_);
   }
 };
 

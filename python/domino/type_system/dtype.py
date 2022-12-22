@@ -56,7 +56,7 @@ class DType(dominoc.DType, TypeBase):
     def from_string(cls, s: str) -> "DType":
         split_pos = 0
         type_kind = DTypeKind.UNKNOWN
-        default_bits = -1
+        default_bits = 0
         if s[:3] == "int":
             split_pos = 3
             type_kind = DTypeKind.Int
@@ -92,7 +92,7 @@ class DType(dominoc.DType, TypeBase):
         elif s[:7] == "complex":
             split_pos = 7
             type_kind = DTypeKind.Complex
-            default_bits = 32
+            default_bits = 64
         elif s[:6] == "ignore":
             split_pos = 6
             type_kind = DTypeKind.IGNORE
