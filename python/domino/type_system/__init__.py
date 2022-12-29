@@ -1,2 +1,2 @@
 from .dtype import DTypeKind, DType, GeneralDType
-from .ttype import ShapeType, TType
+# from .ttype import ShapeType, TType

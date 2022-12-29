@@ -1,10 +1,13 @@
+#include <block.h>
 #include <expr.h>
 #include <fmt/core.h>
 #include <ir_base.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <ref.h>
+#include <stmt.h>
 #include <type_system/dtype.h>
+#include <simplify.h>
 
 PYBIND11_DECLARE_HOLDER_TYPE(T, domino::Ref<T>);
 
@@ -305,6 +308,117 @@ PYBIND11_MODULE(dominoc, m) {
       .def("__str__", [](const CallNode& d) { return std::string(d); })
       .def_readonly("func", &CallNode::func)
       .def_readonly("args", &CallNode::args);
+
+  /// bind stmt classes
+  py::class_<StmtNode, Stmt> pyStmt(ir_m, "Stmt", pyIRBase);
+  pyStmt.def(py::init<>())
+      .def("__repr__", [](const StmtNode& d) { return std::string(d); })
+      .def("__str__", [](const StmtNode& d) { return std::string(d); });
+
+  /// bind NdStore IR Node
+  py::class_<NdStoreNode, NdStore>(ir_m, "NdStore", pyStmt)
+      .def(py::init<MemRef, ExprList, ExprList>())
+      .def("__repr__", [](const NdStoreNode& d) { return std::string(d); })
+      .def("__str__", [](const NdStoreNode& d) { return std::string(d); })
+      .def_readonly("mem_ref", &NdStoreNode::mem_ref)
+      .def_readonly("indices", &NdStoreNode::indices)
+      .def_readonly("values", &NdStoreNode::values);
+
+  /// bind Store IR Node
+  py::class_<StoreNode, Store>(ir_m, "Store", pyStmt)
+      .def(py::init<MemRef, Expr, Expr>())
+      .def("__repr__", [](const StoreNode& d) { return std::string(d); })
+      .def("__str__", [](const StoreNode& d) { return std::string(d); })
+      .def_readonly("mem_ref", &StoreNode::mem_ref)
+      .def_readonly("addr", &StoreNode::addr)
+      .def_readonly("value", &StoreNode::value);
+
+  /// bind Evaluate IR Node
+  py::class_<EvaluateNode, Evaluate>(ir_m, "Evaluate", pyStmt)
+      .def(py::init<Expr>())
+      .def("__repr__", [](const EvaluateNode& d) { return std::string(d); })
+      .def("__str__", [](const EvaluateNode& d) { return std::string(d); })
+      .def_readonly("expr", &EvaluateNode::expr);
+
+  /// bind block classes
+  py::class_<BlockNode, Block> pyBlock(ir_m, "Block", pyIRBase);
+  pyBlock.def(py::init<>());
+
+  /// bind AttrBlock IR Node
+  py::class_<AttrBlockNode, AttrBlock>(ir_m, "AttrBlock", pyBlock)
+      .def(py::init<std::string, IRBase, IRBase, Block>())
+      .def_readonly("key", &AttrBlockNode::key)
+      .def_readonly("obj", &AttrBlockNode::obj)
+      .def_readonly("value", &AttrBlockNode::value)
+      .def_readonly("body", &AttrBlockNode::body);
+
+  /// bind NdForBlock IR Node
+  py::class_<NdForBlockNode, NdForBlock>(ir_m, "NdForBlock", pyBlock)
+      .def(py::init<std::vector<Iterator>, Block, std::string>())
+      .def_readonly("iters", &NdForBlockNode::iters)
+      .def_readonly("body", &NdForBlockNode::body)
+      .def_readonly("compute_level", &NdForBlockNode::compute_level);
+
+  /// bind ForBlock IR Node
+  py::class_<ForBlockNode, ForBlock>(ir_m, "ForBlock", pyBlock)
+      .def(py::init<Iterator, Block, std::string>())
+      .def_readonly("iter", &ForBlockNode::iter)
+      .def_readonly("body", &ForBlockNode::body)
+      .def_readonly("compute_level", &ForBlockNode::compute_level);
+
+  /// bind BranchBlock IR Node
+  py::class_<BranchBlockNode, BranchBlock>(ir_m, "BranchBlock", pyBlock)
+      .def(py::init<Expr, Block, Block>())
+      .def_readonly("cond", &BranchBlockNode::cond)
+      .def_readonly("true_branch", &BranchBlockNode::true_branch)
+      .def_readonly("false_branch", &BranchBlockNode::false_branch);
+
+  /// bind SeqBlock IR Node
+  py::class_<SeqBlockNode, SeqBlock>(ir_m, "SeqBlock", pyBlock)
+      .def(py::init<Block, Block>())
+      .def_readonly("first", &SeqBlockNode::first)
+      .def_readonly("second", &SeqBlockNode::second);
+
+  /// bind SpatialBlock IR Node
+  py::class_<SpatialBlockNode, SpatialBlock>(ir_m, "SpatialBlock", pyBlock)
+      .def(py::init<std::vector<Block>, std::vector<ConstString>>())
+      .def_readonly("blocks", &SpatialBlockNode::blocks)
+      .def_readonly("spatial_bindings", &SpatialBlockNode::spatial_bindings);
+
+  /// bind AtomBlock IR Node
+  py::class_<AtomBlockNode, AtomBlock>(ir_m, "AtomBlock", pyBlock)
+      .def(py::init<Stmt>())
+      .def_static("make_null_block", &AtomBlockNode::makeNullBlock)
+      .def("is_null_block", &AtomBlockNode::isNullBlock)
+      .def("get_stmt", &AtomBlockNode::getStmt);
+
+  /// bind ReMapBlock IR Node
+  py::class_<ReMapBlockNode, ReMapBlock>(ir_m, "ReMapBlock", pyBlock)
+      .def(py::init<std::vector<MapVar>, Block>())
+      .def_readonly("mappings", &ReMapBlockNode::mappings)
+      .def_readonly("body", &ReMapBlockNode::body);
+
+  /// bind NdAllocBlock IR Node
+  py::class_<NdAllocBlockNode, NdAllocBlock>(ir_m, "NdAlloc", pyBlock)
+      .def(py::init<Var, std::vector<Expr>, ConstString, Block>())
+      .def_readonly("var", &NdAllocBlockNode::var)
+      .def_readonly("shape", &NdAllocBlockNode::shape)
+      .def_readonly("memory_scope", &NdAllocBlockNode::memory_scope)
+      .def_readonly("body", &NdAllocBlockNode::body);
+
+  /// bind AllocBlock IR Node
+  py::class_<AllocBlockNode, AllocBlock>(ir_m, "Alloc", pyBlock)
+      .def(py::init<Var, Expr, ConstString, Block>())
+      .def_readonly("var", &AllocBlockNode::var)
+      .def_readonly("length", &AllocBlockNode::length)
+      .def_readonly("memory_scope", &AllocBlockNode::memory_scope)
+      .def_readonly("body", &AllocBlockNode::body);
+
+  /// bind IRPrinter function
+  ir_m.def("print_ir", &repr, "Function that prints the IR.");
+
+  /// bind ExprSimplifyMatchPattern function
+  ir_m.def("expr_simplify_match_pattern", &ExprSimplifyMatchPattern, "Function that performs pattern matching for simplify.");
 }
 
 }  // namespace domino

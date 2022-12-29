@@ -50,17 +50,18 @@ class GeneralFunctor<Visitor, Base, std::tuple<void, Deriveds...>, R(Args...), P
   using VtableType = Vtable<BasePtr, R (*)(Visitor*, BasePtr, Args...)>;
 
  public:
-  R Visit(BasePtr base, Args&&... args) {
+  R Visit(BasePtr base, Args... args) {
     static VtableType vtable = BuildVtable();
 
     return vtable.Get(base)(static_cast<Visitor*>(this), base, std::forward<Args>(args)...);
   }
-  R operator()(BasePtr base, Args&&... args) { return Visit(base, std::forward<Args>(args)...); }
+
+  R operator()(BasePtr base, Args... args) { return Visit(base, std::forward<Args>(args)...); }
 
  private:
   template <typename Derived, typename... Rest>
   static void Register(VtableType& vtable) {
-    vtable.template Set<Derived>([](Visitor* visitor, BasePtr base, Args&&... args) -> R {
+    vtable.template Set<Derived>([](Visitor* visitor, BasePtr base, Args... args) -> R {
       return visitor->ImplVisit(Pointer::template cast<Derived>(base), std::forward<Args>(args)...);
     });
     if constexpr (sizeof...(Rest) > 0) {

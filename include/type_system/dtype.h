@@ -161,6 +161,10 @@ class DType {
   }
 
   operator std::string() const {
+    if (type_kind == DTypeKind::kString || type_kind == DTypeKind::kIGNORE ||
+        type_kind == DTypeKind::kUNKNOWN || type_kind == DTypeKind::kMemRef) {
+      return dtype_kind_to_string(type_kind);
+    }
     if (lane == 1) {
       return fmt::format("{}{}", dtype_kind_to_string(type_kind), bits);
     } else {

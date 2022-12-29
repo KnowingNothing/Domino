@@ -15,7 +15,7 @@ class Ref {
 
   std::shared_ptr<T> shr_ptr_;
 
-  Ref(std::shared_ptr<T> &&sp) : shr_ptr_(std::move(sp)) {}
+  Ref(std::shared_ptr<T>&& sp) : shr_ptr_(std::move(sp)) {}
 
  public:
   Ref() = default;
@@ -64,11 +64,18 @@ class Ref {
     return Ref(std::make_shared<T>(std::forward<Args>(args)...));
   }
 
-  operator std::string() const {
-    return std::string(*shr_ptr_);
-  }
+  operator std::string() const { return std::string(*shr_ptr_); }
 };
 
 };  // namespace domino
+
+namespace std {
+
+template <typename T>
+class hash<domino::Ref<T>> {
+ public:
+  size_t operator()(const domino::Ref<T>& ref) const { return hash<void*>()((void*)ref.get()); }
+};
+}  // namespace std
 
 #endif

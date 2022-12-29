@@ -7,7 +7,8 @@ import numpy as np
 import domino
 from domino.graph_ir import Tensor, ConstTensor, Attribute, ActivationAttr, Op, SubGraph, Graph
 from domino.program_ir import ConstInt, ConstFloat, ExprList, make_const
-from domino.type_system import DType, ShapeType, GeneralDType
+from domino.type_system.dtype import DType, GeneralDType
+from domino.type_system.ttype import ShapeType
 from domino.graph_ir.quantize import ClipQuantParam, QuantParam, ScaleQuantParam, TensorQuantParam
 
 
