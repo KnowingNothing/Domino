@@ -24,6 +24,9 @@ class Expr(ir.Expr):
     def __init__(self, dtype: DType):
         super(Expr, self).__init__(dtype)
 
+    def __hash__(self):
+        return hash(id(self))
+
     def __add__(self, others):
         if isinstance(others, Expr):
             return Add(self, others)

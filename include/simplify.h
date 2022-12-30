@@ -3,6 +3,7 @@
 
 #include <ir_functor.h>
 #include <logging/logging.h>
+#include <mutator.h>
 
 #include <unordered_map>
 #include <vector>
@@ -239,20 +240,50 @@ class ExprSimplifyPatternMatcher : public IRFunctor<bool(Expr)> {
 
 /**
  * \brief Function that performs pattern matching
- * 
+ *
  * Left side is the target expression, right side is the matching pattern
  * Returns bool value indicating whether the matching succeeds.
  * The matching rules are from ExprSimplifyPatternMatcher
-*/
+ */
 bool ExprSimplifyMatchPattern(Expr target, Expr pattern);
 
-class ExprSubstituter : public IRFunctor<Expr()> {
+/**
+ * \brief Function that performs pattern matching and returns the matching result
+ *
+ * Left side is the target expression, right side is the matching pattern
+ * Returns a map<Var, Expr>. If matching fails, returns empty map.
+ * The matching rules are from ExprSimplifyPatternMatcher
+ */
+std::unordered_map<Var, Expr> GetExprSimplifyMatchPatterns(Expr target, Expr pattern);
+
+/**
+ * \brief Class that performs expression substitution
+ *
+ * ExprSubstituter substitutes a given expression according to a given map Map<Var, Expr>
+ */
+class ExprSubstituter : public ExprMutator {
+ public:
+  ExprSubstituter(std::unordered_map<Var, Expr> mapping) : mapping_(std::move(mapping)) {}
+
  protected:
-  void addPattern(const ExprSimplifyPattern& pattern) { patterns_.push_back(pattern); }
+  Expr ImplVisit(Var op) override {
+    if (mapping_.count(op)) {
+      return mapping_.at(op);
+    } else {
+      return op;
+    }
+  }
 
  private:
-  std::vector<ExprSimplifyPattern> patterns_;
+  std::unordered_map<Var, Expr> mapping_;
 };
+
+/**
+ * \brief Function for expression substitution
+ * \param expr The expression to be substituted
+ * \param mapping The mapping used in substitution
+ */
+Expr SubstituteExpr(Expr expr, std::unordered_map<Var, Expr> mapping);
 
 class ExprSimplifier : public IRFunctor<Expr()> {
  protected:

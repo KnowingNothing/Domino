@@ -429,6 +429,8 @@ class BroadcastNode : public UniExprNode {
  public:
   BroadcastNode(Expr a, int lane) : UniExprNode(a->dtype.with_lanes(lane), a) {}
 
+  BroadcastNode(DType dtype, Expr a) : UniExprNode(dtype, a) {}
+
   operator std::string() const override {
     return fmt::format("Broadcast({}, {})", std::string(this->dtype), std::string(this->a));
   }

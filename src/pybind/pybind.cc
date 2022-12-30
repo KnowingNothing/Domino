@@ -5,9 +5,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <ref.h>
+#include <simplify.h>
 #include <stmt.h>
 #include <type_system/dtype.h>
-#include <simplify.h>
 
 PYBIND11_DECLARE_HOLDER_TYPE(T, domino::Ref<T>);
 
@@ -418,7 +418,16 @@ PYBIND11_MODULE(dominoc, m) {
   ir_m.def("print_ir", &repr, "Function that prints the IR.");
 
   /// bind ExprSimplifyMatchPattern function
-  ir_m.def("expr_simplify_match_pattern", &ExprSimplifyMatchPattern, "Function that performs pattern matching for simplify.");
+  ir_m.def("expr_simplify_match_pattern", &ExprSimplifyMatchPattern,
+           "Function that performs pattern matching for simplify.");
+
+  /// bind GetExprSimplifyMatchPatterns function
+  ir_m.def("get_expr_simplify_match_patterns", &GetExprSimplifyMatchPatterns,
+           "Function that performs pattern matching for simplify and returns the mapping.");
+
+  /// bind SubstituteExpr function
+  ir_m.def("substitute_expr", &SubstituteExpr,
+           "Function that substitutes expression according to mapping.");
 }
 
 }  // namespace domino
