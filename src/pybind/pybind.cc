@@ -417,6 +417,12 @@ PYBIND11_MODULE(dominoc, m) {
   /// bind IRPrinter function
   ir_m.def("print_ir", &repr, "Function that prints the IR.");
 
+  /// bind ExprSimplifyPattern
+  py::class_<ExprSimplifyPattern>(ir_m, "ExprSimplifyPattern")
+    .def(py::init<Expr, Expr>())
+    .def_readonly("old", &ExprSimplifyPattern::old)
+    .def_readonly("replace", &ExprSimplifyPattern::replace);
+
   /// bind ExprSimplifyMatchPattern function
   ir_m.def("expr_simplify_match_pattern", &ExprSimplifyMatchPattern,
            "Function that performs pattern matching for simplify.");
@@ -428,6 +434,15 @@ PYBIND11_MODULE(dominoc, m) {
   /// bind SubstituteExpr function
   ir_m.def("substitute_expr", &SubstituteExpr,
            "Function that substitutes expression according to mapping.");
+
+  /// bind ExprSimplifier class
+//   py::class_<ExprSimplifier>(ir_m, "ExprSimplifier")
+//     // .def(py::init<>())
+//     .def_static("patterns_", &ExprSimplifier::patterns_, py::return_value_policy::reference_internal);
+
+  /// bind SimplifyExpr function
+  ir_m.def("simplify_expr", &SimplifyExpr,
+           "Function that simplifies expressions according to a list of inner rules.");
 }
 
 }  // namespace domino

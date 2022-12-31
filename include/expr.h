@@ -904,10 +904,14 @@ Expr operator*(const Expr& a, const Expr& b);
 Expr operator/(const Expr& a, const Expr& b);
 Expr operator%(const Expr& a, const Expr& b);
 
+Expr operator-(const Expr& a);
+
 ConstInt const_int(long long int value, int bits = 32, int lanes = 1);
 ConstUInt const_uint(unsigned long long int value, int bits = 32, int lanes = 1);
 ConstFloat const_float(double value, int bits = 32, int lanes = 1);
 ConstString const_string(std::string value);
+
+Var var(const std::string dtype, const std::string& name = "");
 
 }  // namespace domino
 

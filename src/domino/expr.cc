@@ -12,6 +12,8 @@ Expr operator/(const Expr& a, const Expr& b) { return Div::make(a, b); }
 
 Expr operator%(const Expr& a, const Expr& b) { return Mod::make(a, b); }
 
+Expr operator-(const Expr& a) { return Neg::make(a); }
+
 ConstInt const_int(long long int value, int bits, int lanes) {
   return ConstInt::make(value, bits, lanes);
 }
@@ -35,6 +37,11 @@ std::string iter_type_to_string(IterTypeKind kind) {
     default:
       throw std::runtime_error(fmt::format("IterType not known: {}", int(kind)));
   }
+}
+
+Var var(const std::string dtype, const std::string& name) {
+  DType type = DType::make(dtype);
+  return Var::make(type, name);
 }
 
 }  // namespace domino

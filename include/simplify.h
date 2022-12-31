@@ -25,6 +25,7 @@ class ExprSimplifyPattern {
  * expression Rules:
  * 1. Any left Expr matches with right Var
  * 2. Except rule 1, different IR nodes don't match
+ * 3. Any matched right Var won't match new left Expr
  */
 class ExprSimplifyPatternMatcher : public IRFunctor<bool(Expr)> {
  protected:
@@ -34,8 +35,12 @@ class ExprSimplifyPatternMatcher : public IRFunctor<bool(Expr)> {
   }                                                      \
   Var as_var = other.as<VarNode>();                      \
   if (as_var.defined()) {                                \
-    add_mapping(as_var, op);                             \
-    return true;                                         \
+    if (!varMapped(as_var)) {                            \
+      addMapping(as_var, op);                            \
+      return true;                                       \
+    } else {                                             \
+      return checkCorrectMapping(as_var, op);            \
+    }                                                    \
   }                                                      \
   OP as_op = other.as<OP##Node>();                       \
   if (!as_op.defined()) {                                \
@@ -178,8 +183,9 @@ class ExprSimplifyPatternMatcher : public IRFunctor<bool(Expr)> {
   bool ImplVisit(Var op, Expr other) override {
     GENERAL_VISIT(Var)
     // can't reach here
-    ASSERT(false) << "Reach undesirable point.";
-    return false;
+    ASSERT(false) << "Reach undesirable point when matching " << std::string(op) << " and "
+                  << std::string(other);
+    return true;
   }
 
   bool ImplVisit(Iterator op, Expr other) override {
@@ -229,13 +235,19 @@ class ExprSimplifyPatternMatcher : public IRFunctor<bool(Expr)> {
   }
 
 #undef GENERAL_VISIT
-  void add_mapping(Var var, Expr expr) { mapping_results_[var] = expr; }
+  void addMapping(Var var, Expr expr) { mapping_results_[var] = expr; }
+
+  bool varMapped(Var var) { return mapping_results_.count(var); }
+
+  bool checkCorrectMapping(Var var, Expr other) {
+    return mapping_results_.count(var) && (mapping_results_.at(var) == other);
+  }
 
  private:
   std::unordered_map<Var, Expr> mapping_results_;
 
  public:
-  std::unordered_map<Var, Expr> get_mapping() { return mapping_results_; }
+  std::unordered_map<Var, Expr> getMapping() { return mapping_results_; }
 };
 
 /**
@@ -285,23 +297,64 @@ class ExprSubstituter : public ExprMutator {
  */
 Expr SubstituteExpr(Expr expr, std::unordered_map<Var, Expr> mapping);
 
-class ExprSimplifier : public IRFunctor<Expr()> {
+/**
+ * \brief Class that simplifies an expression according to a set of patterns
+ *
+ * The current simplifier iterations the given list of rules in order and
+ * tries to apply each rule one by one.
+ */
+class ExprSimplifier : public ExprMutator {
+ public:
+  ExprSimplifier() { InitPatterns(); }
+
+  Expr Visit(IRBase expr) override {
+    Expr to_simplify = ExprMutator::Visit(expr);
+    for (auto p : this->patterns_) {
+      std::unordered_map<Var, Expr> mapping = GetExprSimplifyMatchPatterns(to_simplify, p.old);
+      if (mapping.size() > 0U) {
+        to_simplify = SubstituteExpr(p.replace, mapping);
+      }
+    }
+    return to_simplify;
+  }
+
+  Expr operator()(IRBase expr) override { return Visit(expr); }
+
  protected:
-  /// expressions
-  Expr ImplVisit(MemRef mem_ref) override {
-    Var new_var = mem_ref->var;
-    Expr new_offset = Visit(mem_ref->offset);
-    return MemRef::make(new_var, new_offset);
+  static void InitPatterns() {
+    Var a = var("int32", "_a");
+    Var b = var("int32", "_b");
+#define P(x, y) patterns_.push_back(ExprSimplifyPattern((x), (y)));
+    P(a + const_int(0, 32, 1), a);
+    P(const_int(0, 32, 1) + a, a);
+    P(a * const_int(0, 32, 1), const_int(0, 32, 1));
+    P(const_int(0, 32, 1) * a, const_int(0, 32, 1));
+    P(-(-a), a);
+    P(a - a, const_int(0, 32, 1));
+    P(a + (-a), const_int(0, 32, 1));
+    P((-a) + a, const_int(0, 32, 1));
+    P(a + b - a, b);
+    P(-a + b + a, b);
+#undef P
   }
 
-  Expr ImplVisit(Add op) override {
-    Expr new_a = Visit(op->a);
-    Expr new_b = Visit(op->b);
-    return Add::make(new_a, new_b);
-  }
-
- private:
+ public:
+  static std::vector<ExprSimplifyPattern> patterns_;
 };
+
+std::vector<ExprSimplifyPattern> ExprSimplifier::patterns_;
+//  = {
+//   ExprSimplifyPattern(var("int32") + const_int(0, 32, 1), var("int32")),
+//   ExprSimplifyPattern(const_int(0, 32, 1) + var("int32"), var("int32"))
+// };
+
+/**
+ * \brief Function that perform expression simplification.
+ *
+ * The simplification logic is from ExprSimplifier.
+ */
+Expr SimplifyExpr(Expr expr);
+
 }  // namespace domino
 
 #endif  // DOMINO_SIMPLIFY_H
