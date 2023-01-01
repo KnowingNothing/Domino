@@ -106,7 +106,7 @@ def test_simplify_expr_2():
     a = Var("int32", "a")
     b = Var("int32", "b")
     c = Var("int32", "c")
-    expr = a + b - c + a
+    expr = a + b + 0 - c + a * 320 * 0 + a
     res = print_ir(simplify_expr(expr), print_out=False)
     assert res == "(((a + b) - c) + a)"
     expr = (a + b + c) * 0 + c
@@ -118,6 +118,9 @@ def test_simplify_expr_2():
     expr = a + b - a
     res = print_ir(simplify_expr(expr), print_out=False)
     assert res == "b"
+    expr = -(-(-(-(a))))
+    res = print_ir(simplify_expr(expr), print_out=False)
+    assert res == "a"
 
 
 if __name__ == "__main__":

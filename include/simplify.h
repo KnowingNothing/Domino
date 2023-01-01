@@ -335,6 +335,8 @@ class ExprSimplifier : public ExprMutator {
     P((-a) + a, const_int(0, 32, 1));
     P(a + b - a, b);
     P(-a + b + a, b);
+    P(a * const_int(1, 32, 1), a);
+    P(const_int(1, 32, 1) * a, a);
 #undef P
   }
 
