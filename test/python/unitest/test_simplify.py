@@ -83,7 +83,7 @@ def test_substitute_expr_1():
         d: 0
     }
     new_expr = substitute_expr(expr, mapping)
-    res = print_ir(new_expr, print_out=False)
+    res = print_ir(new_expr, print_out=False, simplify=False)
     assert res == "(((((((a + 1) + 37) * 32) + (c * c)) * 4) + 0) + 5)"
 
 
