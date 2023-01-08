@@ -148,7 +148,7 @@ class IRPrinter : public IRFunctor<std::string()> {
   /// statements
   std::string ImplVisit(NdStore op) override {
     return fmt::format("store_n({}, {}, {});", Visit(op->mem_ref), Visit(op->indices),
-                       Visit(op->values));
+                       Visit(op->value));
   }
 
   std::string ImplVisit(Store op) override {

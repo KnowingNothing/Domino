@@ -107,8 +107,8 @@ class ReMapBlock(ir.ReMapBlock, Block):
         Block.__init__(self)
 
 
-class NdAllocBlock(ir.NdAllocBLock, Block):
-    def __init__(self, var: Var, shape: List[Expr], memory_scope: ConstString, body: Block):
+class NdAllocBlock(ir.NdAllocBlock, Block):
+    def __init__(self, var: Var, shape: List[Expr], memory_scope: Union[ConstString, str], body: Block):
         assert isinstance(var, Var)
         shape = [_to_expr(x) for x in shape]
         if not isinstance(memory_scope, ConstString):
@@ -119,7 +119,7 @@ class NdAllocBlock(ir.NdAllocBLock, Block):
         Block.__init__(self)
 
 
-class AllocBlock(ir.AllocBLock, Block):
+class AllocBlock(ir.AllocBlock, Block):
     def __init__(self, var: Var, length: Expr, memory_scope: ConstString, body: Block):
         assert isinstance(var, Var)
         length = _to_expr(length)

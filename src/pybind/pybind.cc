@@ -317,12 +317,12 @@ PYBIND11_MODULE(dominoc, m) {
 
   /// bind NdStore IR Node
   py::class_<NdStoreNode, NdStore>(ir_m, "NdStore", pyStmt)
-      .def(py::init<MemRef, ExprList, ExprList>())
+      .def(py::init<MemRef, ExprList, Expr>())
       .def("__repr__", [](const NdStoreNode& d) { return std::string(d); })
       .def("__str__", [](const NdStoreNode& d) { return std::string(d); })
       .def_readonly("mem_ref", &NdStoreNode::mem_ref)
       .def_readonly("indices", &NdStoreNode::indices)
-      .def_readonly("values", &NdStoreNode::values);
+      .def_readonly("value", &NdStoreNode::value);
 
   /// bind Store IR Node
   py::class_<StoreNode, Store>(ir_m, "Store", pyStmt)
@@ -399,7 +399,7 @@ PYBIND11_MODULE(dominoc, m) {
       .def_readonly("body", &ReMapBlockNode::body);
 
   /// bind NdAllocBlock IR Node
-  py::class_<NdAllocBlockNode, NdAllocBlock>(ir_m, "NdAlloc", pyBlock)
+  py::class_<NdAllocBlockNode, NdAllocBlock>(ir_m, "NdAllocBlock", pyBlock)
       .def(py::init<Var, std::vector<Expr>, ConstString, Block>())
       .def_readonly("var", &NdAllocBlockNode::var)
       .def_readonly("shape", &NdAllocBlockNode::shape)
@@ -407,7 +407,7 @@ PYBIND11_MODULE(dominoc, m) {
       .def_readonly("body", &NdAllocBlockNode::body);
 
   /// bind AllocBlock IR Node
-  py::class_<AllocBlockNode, AllocBlock>(ir_m, "Alloc", pyBlock)
+  py::class_<AllocBlockNode, AllocBlock>(ir_m, "AllocBlock", pyBlock)
       .def(py::init<Var, Expr, ConstString, Block>())
       .def_readonly("var", &AllocBlockNode::var)
       .def_readonly("length", &AllocBlockNode::length)

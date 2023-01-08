@@ -15,7 +15,7 @@ __all__ = [
     "Range", "ExprList",
     "CondAll", "CondAny",
     "ConstInt", "ConstUInt", "ConstFloat", "ConstBFloat", "ConstTFloat", "ConstString", "make_const",
-    "Var", "Iterator", "NdLoad", "Load", "MapVar", "Slice", "MemSlice", "Call",
+    "Var", "IterTypeKind", "Iterator", "NdLoad", "Load", "MapVar", "Slice", "MemSlice", "Call",
     "_to_expr"
 ]
 
@@ -28,7 +28,7 @@ class Expr(ir.Expr):
         return hash(id(self))
 
     def __add__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return Add(self, others)
         elif isinstance(others, int):
             return Add(self, ConstInt(others))
@@ -38,7 +38,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {self} + {others}")
 
     def __radd__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return Add(others, self)
         elif isinstance(others, int):
             return Add(ConstInt(others), self)
@@ -48,7 +48,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {others} + {self}")
 
     def __sub__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return Sub(self, others)
         elif isinstance(others, int):
             return Sub(self, ConstInt(others))
@@ -58,7 +58,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {self} - {others}")
 
     def __mul__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return Mul(self, others)
         elif isinstance(others, int):
             return Mul(self, ConstInt(others))
@@ -68,7 +68,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {self} * {others}")
 
     def __rmul__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return Mul(others, self)
         elif isinstance(others, int):
             return Mul(ConstInt(others), self)
@@ -78,7 +78,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {others} * {self}")
 
     def __truediv__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return Div(self, others)
         elif isinstance(others, int):
             return Div(self, ConstInt(others))
@@ -88,7 +88,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {self} / {others}")
 
     def __floordiv__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return FloorDiv(self, others)
         elif isinstance(others, int):
             return FloorDiv(self, ConstInt(others))
@@ -98,7 +98,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {self} // {others}")
 
     def __mod__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return Mod(self, others)
         elif isinstance(others, int):
             return Mod(self, ConstInt(others))
@@ -117,7 +117,7 @@ class Expr(ir.Expr):
         raise NotImplementedError("No implementation for expression <<")
 
     def __and__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return BitAnd(self, others)
         elif isinstance(others, int):
             return BitAnd(self, ConstInt(others))
@@ -127,7 +127,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {self} & {others}")
 
     def __or__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return BitOr(self, others)
         elif isinstance(others, int):
             return BitOr(self, ConstInt(others))
@@ -137,7 +137,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {self} | {others}")
 
     def __xor__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return BitXOr(self, others)
         elif isinstance(others, int):
             return BitXOr(self, ConstInt(others))
@@ -147,7 +147,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {self} ^ {others}")
 
     def __lt__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return LT(self, others)
         elif isinstance(others, int):
             return LT(self, ConstInt(others))
@@ -157,7 +157,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {self} < {others}")
 
     def __gt__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return GT(self, others)
         elif isinstance(others, int):
             return GT(self, ConstInt(others))
@@ -167,7 +167,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {self} > {others}")
 
     def __le__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return LE(self, others)
         elif isinstance(others, int):
             return LE(self, ConstInt(others))
@@ -187,7 +187,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {self} >= {others}")
 
     def __eq__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return EQ(self, others)
         elif isinstance(others, int):
             return EQ(self, ConstInt(others))
@@ -197,7 +197,7 @@ class Expr(ir.Expr):
             raise RuntimeError(f"Can't perform {self} == {others}")
 
     def __ne__(self, others):
-        if isinstance(others, Expr):
+        if isinstance(others, ir.Expr):
             return NE(self, others)
         elif isinstance(others, int):
             return NE(self, ConstInt(others))
@@ -229,7 +229,7 @@ class Expr(ir.Expr):
 
 
 def _to_expr(expr):
-    if isinstance(expr, Expr):
+    if isinstance(expr, ir.Expr):
         return expr
     if isinstance(expr, int):
         return ConstInt(expr)
@@ -584,6 +584,8 @@ def make_const(value, dtype):
 ##=-------------------------------------------------------------------=##
 class Var(ir.Var, MutableExpr):
     def __init__(self, dtype: Union[DType, str], name: str = ""):
+        if isinstance(name, ConstString):
+            name = name.value
         ir.Var.__init__(self, _dtype(dtype), name)
         MutableExpr.__init__(self, self.dtype)
 
@@ -623,7 +625,7 @@ class Iterator(ir.Iterator, Expr):
 ##=-------------------------------------------------------------------=##
 class NdLoad(ir.NdLoad, Expr):
     def __init__(self, mem_ref: MemRef, indices: List[Expr]):
-        indices = [_to_expr(x) for x in indices]
+        indices = ExprList([_to_expr(x) for x in indices])
         ir.NdLoad.__init__(self, mem_ref, indices)
         Expr.__init__(self, self.dtype)
 

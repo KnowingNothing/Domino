@@ -29,10 +29,10 @@ def _to_stmt(stmt: Any):
 
 
 class NdStore(ir.NdStore, Stmt):
-    def __init__(self, mem_ref: MemRef, indices: Union[ExprList, List[Any]], values: Union[ExprList, List[Any]]):
+    def __init__(self, mem_ref: MemRef, indices: Union[ExprList, List[Any]], value: Expr):
         indices = _to_expr(indices)
-        values = _to_expr(values)
-        ir.NdStore.__init__(self, mem_ref, indices, values)
+        value = _to_expr(value)
+        ir.NdStore.__init__(self, mem_ref, indices, value)
         Stmt.__init__(self)
 
 

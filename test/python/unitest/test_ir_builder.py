@@ -8,13 +8,14 @@ def test_vector_add():
 
     def vector_add(ctx, A, B, C):
         with ctx.spatial_for("i", range(0, length)) as i:
-            C[i] = A[i] + B[i]
+            with ctx.spatial_for("j", range(0, 4)) as j:
+                C[i * 4 + j] = A[i * 4 + j] + B[i * 4 + j]
 
-    A = Tensor([length], "A", dtype="int8")
-    B = Tensor([length], "B", dtype="int8")
-    C = Tensor([length], "C", dtype="int8")
+    A = Tensor([length], name="A", dtype="int8")
+    B = Tensor([length], name="B", dtype="int8")
+    C = Tensor([length], name="C", dtype="int8")
     irm = lower(vector_add, [A, B, C])
-    print(irm)
+    print_ir(irm)
 
 
 def test_matmul():
@@ -48,7 +49,8 @@ def test_matmul():
                        dtype=A.dtype, name="AR")
         BR = ctx.alloc([K3, N3, K4, N4], scope="frag.B",
                        dtype=B.dtype, name="BR")
-        CR = ctx.alloc([M3, N3, M4, N4], scope="accumulator", dtype=acc_dtype name="CR")
+        CR = ctx.alloc([M3, N3, M4, N4], scope="accumulator",
+                       dtype=acc_dtype, name="CR")
 
         with ctx.spatial_for(names=["m1", "n1"], ranges=[range(0, M1), range(0, N1)], bindings=["blockIdx.y", "blockIdx.x"]) as (m1, n1):
             with ctx.spatial_for(names=["m2", "n2"], ranges=[range(0, M2), range(0, N2)], bindings=["threadIdx.z", "threadIdx.y"]) as (m2, n2):
@@ -59,9 +61,9 @@ def test_matmul():
                     ctx.load(BS, lambda k2, n2, k3, n3, k4, n4: B[index_helper([k1, k2, k3, k4], [
                              K1, K2, K3, K4]), index_helper([n1, n2, n3, n4], [N1, N2, N3, N4])])
                     with ctx.reduce_for(names="k2", ranges=range(0, K2)) as k2:
-                        ctx.load(AR, AS, lambda m3, k3, m4,
+                        ctx.load(AR, lambda m3, k3, m4,
                                  k4: AS[m2, k2, m3, k3, m4, k4])
-                        ctx.load(BR, BS, lambda k3, n3, k4,
+                        ctx.load(BR, lambda k3, n3, k4,
                                  n4: BS[k2, n2, k3, n3, k4, n4])
                         with ctx.reduce_for(names="k3", ranges=range(0, K3)) as k3:
                             # No binding specified, bind to nothing, just serial loop, but not reduce loop
@@ -88,23 +90,9 @@ def test_matmul():
         B = Tensor([K1*K2*K3*K4, N1*N2*N3*N4], "B", dtype="float16")
         C = Tensor([M1*M2*M3*M4, N1*N2*N3*N4], "C", dtype="int8")
         irm = lower(matmul, [A, B, C])
-        print(irm)
+        print(type(irm))
+        print_ir(irm)
 
 
 if __name__ == "__main__":
-    def index_helper(indices, strides):
-        length = len(strides)
-        assert len(indices) == length
-        assert length > 0
-        ret = 0
-        strides = [x for x in strides]
-        strides.append(1)
-        for i in range(length):
-            ret = (ret + indices[i]) * strides[i + 1]
-        return ret
-
-    a = [Var("int32", "a"), Var("int32", "b"), Var("int32", "c")]
-    print(a)
-    b = [32, 8, 4]
-    ret = index_helper(a, b)
-    print_ir(ret)
+    test_vector_add()

@@ -535,7 +535,7 @@ class RangeNode : public ExprNode {
         beg(std::move(beg)),
         extent(std::move(extent)),
         step(std::move(step)) {
-    ASSERT(beg.defined() && extent.defined() && step.defined());
+    ASSERT(this->beg.defined() && this->extent.defined() && this->step.defined());
     ASSERT(this->beg->dtype.is_int() || this->beg->dtype.is_uint());
     ASSERT(this->beg->dtype == this->extent->dtype && this->beg->dtype == this->step->dtype);
   }

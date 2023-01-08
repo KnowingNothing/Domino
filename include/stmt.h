@@ -25,21 +25,21 @@ using Stmt = Ref<StmtNode>;
 
 class NdStoreNode : public StmtNode {
  public:
-  NdStoreNode(MemRef mem_ref, ExprList indices, ExprList values)
-      : mem_ref(std::move(mem_ref)), indices(std::move(indices)), values(std::move(values)) {
+  NdStoreNode(MemRef mem_ref, ExprList indices, Expr value)
+      : mem_ref(std::move(mem_ref)), indices(std::move(indices)), value(std::move(value)) {
     ASSERT(this->mem_ref.defined());
     ASSERT(this->indices.defined());
-    ASSERT(this->values.defined());
+    ASSERT(this->value.defined());
   }
 
   operator std::string() const {
     return fmt::format("NdStore({}, {}, {})", std::string(this->mem_ref),
-                       std::string(this->indices), std::string(this->values));
+                       std::string(this->indices), std::string(this->value));
   }
 
   MemRef mem_ref;
   ExprList indices;
-  ExprList values;
+  Expr value;
 };
 
 using NdStore = Ref<NdStoreNode>;
