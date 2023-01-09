@@ -26,7 +26,7 @@ class KernelSignatureNode : public IRBaseNode {
   std::vector<Var> kernel_args;
 
   KernelSignatureNode(std::string name, std::vector<Var> args)
-      : kernel_name(std::move(name)), kernel_args(std::move(kernel_args)) {}
+      : kernel_name(std::move(name)), kernel_args(std::move(args)) {}
 };
 
 using KernelSignature = Ref<KernelSignatureNode>;
