@@ -115,7 +115,7 @@ class NdAllocBlock(ir.NdAllocBlock, Block):
             assert isinstance(memory_scope, str)
             memory_scope = ConstString(memory_scope)
         body = _to_block(body)
-        ir.NdAllocBlock.__init__(var, shape, memory_scope, body)
+        ir.NdAllocBlock.__init__(self, var, shape, memory_scope, body)
         Block.__init__(self)
 
 

@@ -23,9 +23,9 @@ namespace domino {
 class KernelSignatureNode : public IRBaseNode {
  public:
   std::string kernel_name;
-  std::vector<Expr> kernel_args;
+  std::vector<Var> kernel_args;
 
-  KernelSignatureNode(std::string name, std::vector<Expr> args)
+  KernelSignatureNode(std::string name, std::vector<Var> args)
       : kernel_name(std::move(name)), kernel_args(std::move(kernel_args)) {}
 };
 

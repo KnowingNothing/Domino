@@ -90,7 +90,6 @@ class Array(object):
             return NdLoad(MemRef(self.var, 0), self.calculate_slice_indices(indices))
 
     def __setitem__(self, keys, value):
-        print(value)
         if not isinstance(keys, tuple):
             keys = (keys,)
         assert len(keys) == len(self.shape)
@@ -139,7 +138,10 @@ class AllocBlockContext(BlockContext):
         super(AllocBlockContext, self).__init__(ir_builder)
         var = Var(dtype, name)
         self.array = Array(ir_builder, var, shape, scope=scope)
-        ir_builder.bind_array(var, self.array)
+        self.ir_builder.bind_array(var, self.array)
+        node = TreeContainer(self)
+        self.ir_builder.stack[-1].add_child(node)
+        self.ir_builder.stack.append(node)
 
 
 class ForBlockContext(BlockContext):
@@ -197,6 +199,10 @@ class ForBlockContext(BlockContext):
         self.var_list = [Var("int32", name) for name in self.names]
 
     def __enter__(self):
+        node = TreeContainer(self)
+        self.ir_builder.stack[-1].add_child(node)
+        self.ir_builder.stack.append(node)
+        
         ret = self.var_list
         if len(ret) == 1:
             return ret[0]
@@ -204,13 +210,23 @@ class ForBlockContext(BlockContext):
             return tuple(ret)
 
     def __exit__(self, exc_type, exc_value, exc_tb):
-        return True
+        if exc_type is None:
+            while len(self.ir_builder.stack) > 0 and self.ir_builder.stack[-1].ctx != self:
+                self.ir_builder.stack.pop()
+            if self.ir_builder.stack[-1].ctx == self:
+                self.ir_builder.stack.pop()
+            return True
+        else:
+            raise RuntimeError(exc_value)
 
 
 class StmtBlockContext(BlockContext):
     def __init__(self, ir_builder, stmt):
         super(StmtBlockContext, self).__init__(ir_builder)
         self.stmt = stmt
+        node = TreeContainer(self)
+        self.ir_builder.stack[-1].add_child(node)
+        # self.stack.append(node)
 
 
 class TreeContainer(object):
@@ -245,25 +261,16 @@ class IRBuilderContext(object):
     def alloc(self, shape, scope="global", dtype="float32", name=""):
         alloc_ctx = AllocBlockContext(
             self, shape, scope=scope, dtype=dtype, name=name)
-        node = TreeContainer(alloc_ctx)
-        self.stack[-1].add_child(node)
-        self.stack.append(node)
         return alloc_ctx.array
 
     def spatial_for(self, names=None, ranges=None, bindings=None):
         for_ctx = ForBlockContext(
             self, IterTypeKind.Spatial, names=names, ranges=ranges, bindings=bindings)
-        node = TreeContainer(for_ctx)
-        self.stack[-1].add_child(node)
-        self.stack.append(node)
         return for_ctx
 
     def reduce_for(self, names=None, ranges=None, bindings=None):
         for_ctx = ForBlockContext(
             self, IterTypeKind.Reduce, names=names, ranges=ranges, bindings=bindings)
-        node = TreeContainer(for_ctx)
-        self.stack[-1].add_child(node)
-        self.stack.append(node)
         return for_ctx
 
     def zigzag_for(self, names=None, ranges=None, bindings=None):
@@ -283,9 +290,6 @@ class IRBuilderContext(object):
             load = lambda_func()
             stmt = NdStore(load.mem_ref, load.indices, source)
             store_ctx = StmtBlockContext(self, stmt)
-            node = TreeContainer(store_ctx)
-            self.stack[-1].add_child(node)
-            self.stack.append(node)
 
     def mma(self, output=None, input_a=None, input_b=None, input_c=None, layout_a=None, layout_b=None):
         raise NotImplementedError()
@@ -297,28 +301,33 @@ class IRBuilderContext(object):
                 assert len(sub_trees) == 1
                 return sub_trees[0]
             elif isinstance(cur.ctx, ForBlockContext):
-                assert len(sub_trees) == 1, len(sub_trees)
-                body = sub_trees[0]
+                assert len(sub_trees) >= 1, len(sub_trees)
+                body = sub_trees[-1]
+                for i in range(len(sub_trees) - 1):
+                    body = SeqBlock(sub_trees[len(sub_trees) - i - 2], body)
                 num_loops = len(cur.ctx.var_list)
                 for i in range(num_loops):
                     body = ForBlock(
                         Iterator(cur.ctx.var_list[i], cur.ctx.ranges[i], cur.ctx.iter_type), body, cur.ctx.bindings[i])
                 return body
             elif isinstance(cur.ctx, AllocBlockContext):
-                assert len(sub_trees) == 1
-                body = sub_trees[0]
+                assert len(sub_trees) >= 1
+                body = sub_trees[-1]
+                for i in range(len(sub_trees) - 1):
+                    body = SeqBlock(sub_trees[len(sub_trees) - i - 2], body)
                 body = NdAllocBlock(
                     cur.ctx.array.var, cur.ctx.array.shape, cur.ctx.array.scope, body)
                 return body
             elif isinstance(cur.ctx, StmtBlockContext):
-                assert len(sub_trees) <= 1
-                if len(sub_trees) == 1:
-                    body = sub_trees[0]
-                    body = SeqBlock(cur.ctx.stmt, body)
-                    return body
-                else:
-                    body = cur.ctx.stmt
-                    return body
+                assert len(sub_trees) == 0
+                return cur.ctx.stmt
+                # if len(sub_trees) == 1:
+                #     body = sub_trees[0]
+                #     body = SeqBlock(cur.ctx.stmt, body)
+                #     return body
+                # else:
+                #     body = cur.ctx.stmt
+                #     return body
             else:
                 raise NotImplementedError()
         ret = builder(self.tree)

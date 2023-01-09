@@ -235,10 +235,13 @@ class IRPrinter : public IRFunctor<std::string()> {
     std::string ind = make_indent();
     ASSERT(num_bindings == num_blocks) << "The number of bindings and blocks mismatch.";
     increase_indent();
+    std::string left = "{";
+    std::string right = "}";
     for (int i = 0; i < num_bindings; ++i) {
       std::string binding = Visit(op->spatial_bindings[i]);
       std::string block = Visit(op->blocks[i]);
-      blocks.push_back(fmt::format("{}spatial_{} {\n{}}\n", ind, binding, block));
+      blocks.push_back(
+          fmt::format("{}spatial_{} {}\n{}{}{}\n", ind, binding, left, block, ind, right));
     }
     decrease_indent();
 
@@ -263,7 +266,10 @@ class IRPrinter : public IRFunctor<std::string()> {
     for (auto m : op->mappings) {
       mapping.push_back(Visit(m));
     }
-    return fmt::format("{}remap({}) {\n{}}\n", ind, fmt::join(mapping, ", "), body_str);
+    std::string left = "{";
+    std::string right = "}";
+    return fmt::format("{}remap({}) {}\n{}{}{}\n", ind, fmt::join(mapping, ", "), left, body_str,
+                       ind, right);
   }
 
   std::string ImplVisit(NdAllocBlock op) override {
@@ -275,8 +281,10 @@ class IRPrinter : public IRFunctor<std::string()> {
     for (auto s : op->shape) {
       shape.push_back(Visit(s));
     }
-    return fmt::format("{}alloc_n({}[{}]@{}) {\n{}}\n", ind, Visit(op->var), fmt::join(shape, ", "),
-                       Visit(op->memory_scope), body_str);
+    std::string left = "{";
+    std::string right = "}";
+    return fmt::format("{}alloc_n({}[{}], {}) {}\n{}{}{}\n", ind, Visit(op->var),
+                       fmt::join(shape, ", "), Visit(op->memory_scope), left, body_str, ind, right);
   }
 
   std::string ImplVisit(AllocBlock op) override {
@@ -284,9 +292,10 @@ class IRPrinter : public IRFunctor<std::string()> {
     increase_indent();
     std::string body_str = Visit(op->body);
     decrease_indent();
-
-    return fmt::format("{}alloc({}[{}]@{}) {\n{}}\n", ind, Visit(op->var), Visit(op->length),
-                       Visit(op->memory_scope), body_str);
+    std::string left = "{";
+    std::string right = "}";
+    return fmt::format("{}alloc({}[{}]@{}) {}\n{}{}{}\n", ind, Visit(op->var), Visit(op->length),
+                       Visit(op->memory_scope), left, body_str, ind, right);
   }
 
   void increase_indent() { indent_ += 1; }

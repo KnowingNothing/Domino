@@ -8,8 +8,11 @@ def test_vector_add():
 
     def vector_add(ctx, A, B, C):
         with ctx.spatial_for("i", range(0, length)) as i:
+            D = ctx.alloc([4], scope="local", dtype="int32", name="D")
             with ctx.spatial_for("j", range(0, 4)) as j:
-                C[i * 4 + j] = A[i * 4 + j] + B[i * 4 + j]
+                D[j] = A[i * 4 + j] + B[i * 4 + j]
+            with ctx.spatial_for("j", range(0, 4)) as j:
+                C[i * 4 + j] = cast("int8", D[j] + make_const(1, "int32"))
 
     A = Tensor([length], name="A", dtype="int8")
     B = Tensor([length], name="B", dtype="int8")

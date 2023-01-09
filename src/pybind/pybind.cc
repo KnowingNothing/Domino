@@ -7,6 +7,7 @@
 #include <ref.h>
 #include <simplify.h>
 #include <stmt.h>
+#include <kernel.h>
 #include <type_system/dtype.h>
 
 PYBIND11_DECLARE_HOLDER_TYPE(T, domino::Ref<T>);
@@ -414,14 +415,25 @@ PYBIND11_MODULE(dominoc, m) {
       .def_readonly("memory_scope", &AllocBlockNode::memory_scope)
       .def_readonly("body", &AllocBlockNode::body);
 
+  /// bind kernel classes
+  py::class_<KernelSignatureNode, KernelSignature>(ir_m, "KernelSignature", pyIRBase)
+      .def(py::init<std::string, std::vector<Var>>())
+      .def_readonly("kernel_name", &KernelSignatureNode::kernel_name)
+      .def_readonly("kernel_args", &KernelSignatureNode::kernel_args);
+
+  py::class_<KernelNode, Kernel> pyKernel(ir_m, "Kernel", pyIRBase);
+  pyKernel.def(py::init<KernelSignature, Block>())
+      .def_readonly("signature", &KernelNode::signature)
+      .def_readonly("body", &KernelNode::body);
+
   /// bind IRPrinter function
   ir_m.def("print_ir", &repr, "Function that prints the IR.");
 
   /// bind ExprSimplifyPattern
   py::class_<ExprSimplifyPattern>(ir_m, "ExprSimplifyPattern")
-    .def(py::init<Expr, Expr>())
-    .def_readonly("old", &ExprSimplifyPattern::old)
-    .def_readonly("replace", &ExprSimplifyPattern::replace);
+      .def(py::init<Expr, Expr>())
+      .def_readonly("old", &ExprSimplifyPattern::old)
+      .def_readonly("replace", &ExprSimplifyPattern::replace);
 
   /// bind ExprSimplifyMatchPattern function
   ir_m.def("expr_simplify_match_pattern", &ExprSimplifyMatchPattern,
@@ -436,9 +448,10 @@ PYBIND11_MODULE(dominoc, m) {
            "Function that substitutes expression according to mapping.");
 
   /// bind ExprSimplifier class
-//   py::class_<ExprSimplifier>(ir_m, "ExprSimplifier")
-//     // .def(py::init<>())
-//     .def_static("patterns_", &ExprSimplifier::patterns_, py::return_value_policy::reference_internal);
+  //   py::class_<ExprSimplifier>(ir_m, "ExprSimplifier")
+  //     // .def(py::init<>())
+  //     .def_static("patterns_", &ExprSimplifier::patterns_,
+  //     py::return_value_policy::reference_internal);
 
   /// bind SimplifyExpr function
   ir_m.def("simplify_expr", &SimplifyExpr,
