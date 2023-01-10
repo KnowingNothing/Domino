@@ -4,6 +4,8 @@
 #include <arch.h>
 #include <block.h>
 #include <expr.h>
+#include <fmt/core.h>
+#include <fmt/ranges.h>
 #include <ir_base.h>
 #include <ref.h>
 #include <stmt.h>
@@ -18,7 +20,8 @@ namespace domino {
  * We assume all the kernel return type is void
  *
  * \param kernel_name the name of the kernel in string
- * \param kernel_args a list of Expr, the arguments
+ * \param kernel_args a list of Var, the arguments (pointers only)
+ * TODO: we need to support scalars later
  */
 class KernelSignatureNode : public IRBaseNode {
  public:
@@ -36,13 +39,33 @@ using KernelSignature = Ref<KernelSignatureNode>;
  *
  * \param signature kernel signature
  * \param body kernel body, a block
+ * \param source kernel source code
  */
 class KernelNode : public IRBaseNode {
  public:
   KernelSignature signature;
   Block body;
+  std::string source;
 
-  KernelNode(KernelSignature signature, Block body) : signature(signature), body(body) {}
+  KernelNode(KernelSignature signature, Block body)
+      : signature(std::move(signature)), body(std::move(body)) {}
+
+  bool compiled() const { return this->source.size() > 0; }
+
+  std::string genSignature() const {
+    std::vector<std::string> args;
+    for (auto arg : this->signature->kernel_args) {
+      args.push_back(fmt::format("{}* {}", std::string(arg->dtype), arg->id->value));
+    }
+    return fmt::format("void {}({})", this->signature->kernel_name, fmt::join(args, ", "));
+  }
+
+  std::string genFunction() const {
+    std::string signature = this->genSignature();
+    std::string left = "{";
+    std::string right = "}";
+    return fmt::format("{} {}\n{}{}", signature, left, this->source, right);
+  }
 };
 
 using Kernel = Ref<KernelNode>;

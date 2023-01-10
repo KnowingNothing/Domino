@@ -1,12 +1,15 @@
 from .block import *
 from .scalar_expr import *
 from .stmt import *
+from .kernel import *
 from .dsl import *
 from .functional import print_ir
+from ..codegen import codegen_c
 from typing import Optional
 
 __all__ = [
-    "lower"
+    "program_lower",
+    "program_build"
 ]
 
 
@@ -48,6 +51,12 @@ class Array(object):
             else:
                 origin_indices.append(s)
         return self.origin.calculate_slice_indices(origin_indices)
+
+    def __str__(self):
+        return f"Array({self.var.id.value}, {self.shape}, {self.var.dtype}, {self.scope})"
+
+    def __repr__(self):
+        return str(self)
 
     def __getitem__(self, keys):
         if not isinstance(keys, tuple):
@@ -202,7 +211,7 @@ class ForBlockContext(BlockContext):
         node = TreeContainer(self)
         self.ir_builder.stack[-1].add_child(node)
         self.ir_builder.stack.append(node)
-        
+
         ret = self.var_list
         if len(ret) == 1:
             return ret[0]
@@ -334,8 +343,10 @@ class IRBuilderContext(object):
         return ret
 
 
-def lower(func, tensor_inputs, scalar_inputs=None):
-    ctx = IRBuilderContext()
+def program_lower(func, tensor_inputs, scalar_inputs=None, ctx=None):
+    ctx = IRBuilderContext() if ctx is None else ctx
+    assert isinstance(ctx, IRBuilderContext)
+
     tensor_input_vars = [Var(t.dtype, t.name) for t in tensor_inputs]
     input_arrays = []
     for v, t in zip(tensor_input_vars, tensor_inputs):
@@ -346,5 +357,32 @@ def lower(func, tensor_inputs, scalar_inputs=None):
     assert scalar_inputs is None, "Currently don't support scalar inputs"
 
     func(ctx, *input_arrays)
-    ret = ctx.build()
-    return ret
+    body = ctx.build()
+
+    signature = KernelSignature(func.__name__, tensor_input_vars)
+    kernel = Kernel(signature, body)
+    return kernel
+
+
+def program_build(func, tensor_inputs=None, scalar_inputs=None, ctx=None, target="c"):
+    if not isinstance(func, Kernel):
+        assert tensor_inputs is not None
+        ctx = IRBuilderContext() if ctx is None else ctx
+        assert isinstance(ctx, IRBuilderContext)
+        kernel = program_lower(func, tensor_inputs,
+                       scalar_inputs=scalar_inputs, ctx=ctx)
+    else:
+        assert ctx is not None and isinstance(ctx, IRBuilderContext)
+        kernel = func
+
+    for k, v in ctx.array_map.items():
+        print(k, v)
+    
+    if target == "c":
+        code = codegen_c(kernel.body)
+    else:
+        raise NotImplementedError()
+    
+    kernel.source = code
+    
+    return kernel

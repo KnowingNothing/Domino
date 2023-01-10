@@ -7,18 +7,28 @@ def test_vector_add():
     length = 20
 
     def vector_add(ctx, A, B, C):
+        D = ctx.alloc([4], scope="local", dtype="int32", name="D")
         with ctx.spatial_for("i", range(0, length)) as i:
-            D = ctx.alloc([4], scope="local", dtype="int32", name="D")
             with ctx.spatial_for("j", range(0, 4)) as j:
                 D[j] = A[i * 4 + j] + B[i * 4 + j]
             with ctx.spatial_for("j", range(0, 4)) as j:
                 C[i * 4 + j] = cast("int8", D[j] + make_const(1, "int32"))
 
-    A = Tensor([length], name="A", dtype="int8")
-    B = Tensor([length], name="B", dtype="int8")
-    C = Tensor([length], name="C", dtype="int8")
-    irm = lower(vector_add, [A, B, C])
-    print_ir(irm)
+    A = Tensor([length*4], name="A", dtype="int8")
+    B = Tensor([length*4], name="B", dtype="int8")
+    C = Tensor([length*4], name="C", dtype="int8")
+    kernel = program_lower(vector_add, [A, B, C])
+    print(kernel.signature.kernel_name)
+    print(kernel.signature.kernel_args)
+    print_ir(kernel.body)
+    print(kernel.compiled())
+    
+    kernel = program_build(vector_add, [A, B, C], target="c")
+    print(kernel.compiled())
+    print(kernel.source)
+    print(kernel.gen_signature())
+    print(kernel.gen_function())
+    
 
 
 def test_matmul():

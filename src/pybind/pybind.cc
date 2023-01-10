@@ -1,13 +1,14 @@
 #include <block.h>
+#include <codegen/gen_c.h>
 #include <expr.h>
 #include <fmt/core.h>
 #include <ir_base.h>
+#include <kernel.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <ref.h>
 #include <simplify.h>
 #include <stmt.h>
-#include <kernel.h>
 #include <type_system/dtype.h>
 
 PYBIND11_DECLARE_HOLDER_TYPE(T, domino::Ref<T>);
@@ -15,6 +16,8 @@ PYBIND11_DECLARE_HOLDER_TYPE(T, domino::Ref<T>);
 namespace py = pybind11;
 
 namespace domino {
+
+using namespace codegen;
 
 PYBIND11_MODULE(dominoc, m) {
   /// bind type_system
@@ -424,7 +427,11 @@ PYBIND11_MODULE(dominoc, m) {
   py::class_<KernelNode, Kernel> pyKernel(ir_m, "Kernel", pyIRBase);
   pyKernel.def(py::init<KernelSignature, Block>())
       .def_readonly("signature", &KernelNode::signature)
-      .def_readonly("body", &KernelNode::body);
+      .def_readonly("body", &KernelNode::body)
+      .def_readwrite("source", &KernelNode::source)
+      .def("compiled", &KernelNode::compiled)
+      .def("gen_function", &KernelNode::genFunction)
+      .def("gen_signature", &KernelNode::genSignature);
 
   /// bind IRPrinter function
   ir_m.def("print_ir", &repr, "Function that prints the IR.");
@@ -456,6 +463,12 @@ PYBIND11_MODULE(dominoc, m) {
   /// bind SimplifyExpr function
   ir_m.def("simplify_expr", &SimplifyExpr,
            "Function that simplifies expressions according to a list of inner rules.");
+
+  /// submodule for CodeGen
+  py::module_ gen_m = m.def_submodule("codegen", "Codegen of Domino");
+
+  /// bind codegen_c
+  gen_m.def("codegen_c", &codegen_c, "Codegen function for C source code.");
 }
 
 }  // namespace domino
