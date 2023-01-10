@@ -16,9 +16,9 @@ class Stmt(ir.Stmt):
 
 
 def _to_stmt(stmt: Any):
-    if isinstance(stmt, Stmt):
+    if isinstance(stmt, ir.Stmt):
         return stmt
-    if isinstance(stmt, Expr):
+    if isinstance(stmt, ir.Expr):
         return Evaluate(stmt)
     else:
         try:

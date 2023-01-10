@@ -180,6 +180,166 @@ class ExprMutator : public IRFunctor<Expr()> {
     ASSERT(as_list.defined());
     return Call::make(op->dtype, as_str, as_list);
   }
+
+  Expr ImplVisit(PackValue op) override {
+    Expr list = Visit(op->value_list);
+    ExprList as_list = list.as<ExprListNode>();
+    ASSERT(as_list.defined());
+    return PackValue::make(op->dtype, as_list);
+  }
+};
+
+class StmtMutator : public IRFunctor<Stmt()> {
+ protected:
+  Stmt ImplVisit(NdStore op) override {
+    Expr mem_ref = VisitExpr(op->mem_ref);
+    MemRef as_ref = mem_ref.as<MemRefNode>();
+    ASSERT(as_ref.defined());
+    Expr list = VisitExpr(op->indices);
+    ExprList as_list = list.as<ExprListNode>();
+    ASSERT(as_list.defined());
+    return NdStore::make(as_ref, as_list, VisitExpr(op->value));
+  }
+
+  Stmt ImplVisit(Store op) override {
+    Expr mem_ref = VisitExpr(op->mem_ref);
+    MemRef as_ref = mem_ref.as<MemRefNode>();
+    ASSERT(as_ref.defined());
+    return Store::make(as_ref, VisitExpr(op->addr), VisitExpr(op->value));
+  }
+
+  Stmt ImplVisit(Evaluate op) override { return Evaluate::make(VisitExpr(op->expr)); }
+
+ public:
+  StmtMutator() {
+    expr_mutator = new ExprMutator();
+    need_release = true;
+  }
+  ~StmtMutator() {
+    if (need_release) {
+      delete expr_mutator;
+    }
+  }
+  StmtMutator(ExprMutator* mutator) : expr_mutator(mutator) {}
+  Expr VisitExpr(Expr expr) { return expr_mutator->Visit(expr); }
+
+ private:
+  ExprMutator* expr_mutator = nullptr;
+  bool need_release = false;
+};
+
+class BlockMutator : public IRFunctor<Block()> {
+ protected:
+  Block ImplVisit(AttrBlock op) override {
+    Expr key = VisitExpr(op->key);
+    ConstString as_str = key.as<ConstStringNode>();
+    ASSERT(as_str.defined());
+    Expr v = VisitExpr(op->obj);
+    Var as_var = v.as<VarNode>();
+    ASSERT(as_var.defined());
+    return AttrBlock::make(as_str, as_var, VisitExpr(op->value), Visit(op->body));
+  }
+
+  Block ImplVisit(NdForBlock op) override {
+    std::vector<Iterator> iters;
+    for (auto it : op->iters) {
+      Expr iter = VisitExpr(it);
+      Iterator as_iter = iter.as<IteratorNode>();
+      ASSERT(as_iter.defined());
+      iters.push_back(as_iter);
+    }
+    Expr level = VisitExpr(op->compute_level);
+    ConstString as_str = level.as<ConstStringNode>();
+    ASSERT(as_str.defined());
+    return NdForBlock::make(iters, Visit(op->body), as_str);
+  }
+
+  Block ImplVisit(ForBlock op) override {
+    Expr iter = VisitExpr(op->iter);
+    Iterator as_iter = iter.as<IteratorNode>();
+    ASSERT(as_iter.defined());
+    Expr level = VisitExpr(op->compute_level);
+    ConstString as_str = level.as<ConstStringNode>();
+    ASSERT(as_str.defined());
+    return ForBlock::make(as_iter, Visit(op->body), as_str);
+  }
+
+  Block ImplVisit(BranchBlock op) override {
+    return BranchBlock::make(VisitExpr(op->cond), Visit(op->true_branch), Visit(op->false_branch));
+  }
+
+  Block ImplVisit(SeqBlock op) override {
+    return SeqBlock::make(Visit(op->first), Visit(op->second));
+  }
+
+  Block ImplVisit(SpatialBlock op) override {
+    std::vector<Block> blocks;
+    for (auto b : op->blocks) {
+      blocks.push_back(Visit(b));
+    }
+    std::vector<ConstString> bindings;
+    for (auto s : op->spatial_bindings) {
+      Expr binding = VisitExpr(s);
+      ConstString as_str = binding.as<ConstStringNode>();
+      ASSERT(as_str.defined());
+      bindings.push_back(as_str);
+    }
+    return SpatialBlock::make(blocks, bindings);
+  }
+
+  Block ImplVisit(AtomBlock op) override { return AtomBlock::make(VisitStmt(op->getStmt())); }
+
+  Block ImplVisit(ReMapBlock op) override {
+    std::vector<MapVar> mappings;
+    for (auto m : op->mappings) {
+      Expr mapping = VisitExpr(m);
+      MapVar as_map = mapping.as<MapVarNode>();
+      mappings.push_back(as_map);
+    }
+    return ReMapBlock::make(mappings, Visit(op->body));
+  }
+
+  Block ImplVisit(NdAllocBlock op) override {
+    Expr v = VisitExpr(op->var);
+    Var as_var = v.as<VarNode>();
+    ASSERT(as_var.defined());
+    std::vector<Expr> shape;
+    for (auto s : op->shape) {
+      shape.push_back(VisitExpr(s));
+    }
+    Expr level = VisitExpr(op->memory_scope);
+    ConstString as_str = level.as<ConstStringNode>();
+    ASSERT(as_str.defined());
+    return NdAllocBlock::make(as_var, shape, as_str, Visit(op->body));
+  }
+
+  Block ImplVisit(AllocBlock op) override {
+    Expr v = VisitExpr(op->var);
+    Var as_var = v.as<VarNode>();
+    ASSERT(as_var.defined());
+    Expr level = VisitExpr(op->memory_scope);
+    ConstString as_str = level.as<ConstStringNode>();
+    ASSERT(as_str.defined());
+    return AllocBlock::make(as_var, VisitExpr(op->length), as_str, Visit(op->body));
+  }
+
+ public:
+  BlockMutator() {
+    stmt_mutator = new StmtMutator();
+    need_release = true;
+  }
+  ~BlockMutator() {
+    if (need_release) {
+      delete stmt_mutator;
+    }
+  }
+  BlockMutator(StmtMutator* mutator) : stmt_mutator(mutator) {}
+  Expr VisitExpr(Expr expr) { return stmt_mutator->VisitExpr(expr); }
+  Stmt VisitStmt(Stmt expr) { return stmt_mutator->Visit(expr); }
+
+ private:
+  StmtMutator* stmt_mutator = nullptr;
+  bool need_release = false;
 };
 
 }  // namespace domino

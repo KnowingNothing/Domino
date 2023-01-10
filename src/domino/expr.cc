@@ -31,9 +31,17 @@ ConstString const_string(std::string value) { return ConstString::make(value); }
 std::string iter_type_to_string(IterTypeKind kind) {
   switch (kind) {
     case IterTypeKind::kSpatial:
-      return "spatial"; break;
+      return "spatial";
+      break;
     case IterTypeKind::kReduce:
-      return "reduce"; break;
+      return "reduce";
+      break;
+    case IterTypeKind::kUnroll:
+      return "unroll";
+      break;
+    case IterTypeKind::kZigzag:
+      return "zigzag";
+      break;
     default:
       throw std::runtime_error(fmt::format("IterType not known: {}", int(kind)));
   }

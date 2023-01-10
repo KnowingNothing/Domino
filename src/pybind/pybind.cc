@@ -1,5 +1,5 @@
 #include <block.h>
-#include <codegen/gen_c.h>
+#include <codegen/codegen.h>
 #include <expr.h>
 #include <fmt/core.h>
 #include <ir_base.h>
@@ -259,7 +259,9 @@ PYBIND11_MODULE(dominoc, m) {
   /// bind iterator IR Node
   py::enum_<IterTypeKind>(ir_m, "IterTypeKind")
       .value("Spatial", IterTypeKind::kSpatial)
-      .value("Reduce", IterTypeKind::kReduce);
+      .value("Reduce", IterTypeKind::kReduce)
+      .value("Unroll", IterTypeKind::kUnroll)
+      .value("Zigzag", IterTypeKind::kZigzag);
 
   py::class_<IteratorNode, Iterator>(ir_m, "Iterator", pyExpr)
       .def(py::init<Var, Range, IterTypeKind>())
@@ -313,6 +315,13 @@ PYBIND11_MODULE(dominoc, m) {
       .def_readonly("func", &CallNode::func)
       .def_readonly("args", &CallNode::args);
 
+  /// bind pack_value IR Node
+  py::class_<PackValueNode, PackValue>(ir_m, "PackValue", pyExpr)
+      .def(py::init<DType, ExprList>())
+      .def("__repr__", [](const PackValueNode& d) { return std::string(d); })
+      .def("__str__", [](const PackValueNode& d) { return std::string(d); })
+      .def_readonly("value_list", &PackValueNode::value_list);
+
   /// bind stmt classes
   py::class_<StmtNode, Stmt> pyStmt(ir_m, "Stmt", pyIRBase);
   pyStmt.def(py::init<>())
@@ -350,7 +359,7 @@ PYBIND11_MODULE(dominoc, m) {
 
   /// bind AttrBlock IR Node
   py::class_<AttrBlockNode, AttrBlock>(ir_m, "AttrBlock", pyBlock)
-      .def(py::init<std::string, IRBase, IRBase, Block>())
+      .def(py::init<std::string, Var, Expr, Block>())
       .def_readonly("key", &AttrBlockNode::key)
       .def_readonly("obj", &AttrBlockNode::obj)
       .def_readonly("value", &AttrBlockNode::value)
@@ -420,7 +429,7 @@ PYBIND11_MODULE(dominoc, m) {
 
   /// bind kernel classes
   py::class_<KernelSignatureNode, KernelSignature>(ir_m, "KernelSignature", pyIRBase)
-      .def(py::init<std::string, std::vector<Var>>())
+      .def(py::init<std::string, std::vector<Var>, std::vector<Var>>())
       .def_readonly("kernel_name", &KernelSignatureNode::kernel_name)
       .def_readonly("kernel_args", &KernelSignatureNode::kernel_args);
 
@@ -454,6 +463,17 @@ PYBIND11_MODULE(dominoc, m) {
   ir_m.def("substitute_expr", &SubstituteExpr,
            "Function that substitutes expression according to mapping.");
 
+  /// bind SubstituteStmt function
+  ir_m.def("substitute_stmt", &SubstituteStmt,
+           "Function that substitutes statement according to mapping.");
+
+  /// bind SubstituteBlock function
+  ir_m.def("substitute_block", &SubstituteBlock,
+           "Function that substitutes block according to mapping.");
+
+  /// bind SubstituteIR function
+  ir_m.def("substitute_ir", &SubstituteIR, "Function that substitutes IR according to mapping.");
+
   /// bind ExprSimplifier class
   //   py::class_<ExprSimplifier>(ir_m, "ExprSimplifier")
   //     // .def(py::init<>())
@@ -469,6 +489,9 @@ PYBIND11_MODULE(dominoc, m) {
 
   /// bind codegen_c
   gen_m.def("codegen_c", &codegen_c, "Codegen function for C source code.");
+
+  /// bind codegen_arm_m
+  gen_m.def("codegen_arm_m", &codegen_arm_m, "Codegen function for ARM Cortex M processor.");
 }
 
 }  // namespace domino

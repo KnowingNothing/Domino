@@ -176,6 +176,11 @@ class DType {
     return (type_kind == other.type_kind) && (bits == other.bits) && (lane == other.lane);
   }
 
+  bool operator==(const std::string& other_str) const {
+    DType other = DType::make(other_str);
+    return (type_kind == other.type_kind) && (bits == other.bits) && (lane == other.lane);
+  }
+
   bool operator!=(const DType& other) const { return !((*this) == other); }
 
   DTypeKind type_kind;

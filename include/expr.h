@@ -734,7 +734,7 @@ using Var = Ref<VarNode>;
 ///
 ///=----------------------------------------------------------------------------=///
 
-enum class IterTypeKind : int { kSpatial = 0, kReduce = 1 };
+enum class IterTypeKind : int { kSpatial = 0, kReduce = 1, kUnroll = 2, kZigzag = 3 };
 
 std::string iter_type_to_string(IterTypeKind kind);
 
@@ -897,6 +897,33 @@ class CallNode : public ExprNode {
 };
 
 using Call = Ref<CallNode>;
+
+///=----------------------------------------------------------------------------=///
+///
+/// Other IR Nodes
+///
+///=----------------------------------------------------------------------------=///
+
+class PackValueNode : public ExprNode {
+ public:
+  PackValueNode(DType dtype, ExprList value_list)
+      : ExprNode(dtype), value_list(std::move(value_list)) {}
+
+  ExprList value_list;
+
+  operator std::string() const override {
+    return fmt::format("PackValue({}, {})", std::string(this->dtype),
+                       std::string(this->value_list));
+  }
+};
+
+using PackValue = Ref<PackValueNode>;
+
+///=----------------------------------------------------------------------------=///
+///
+/// Convenient Helper Functions
+///
+///=----------------------------------------------------------------------------=///
 
 Expr operator+(const Expr& a, const Expr& b);
 Expr operator-(const Expr& a, const Expr& b);

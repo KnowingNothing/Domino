@@ -1,7 +1,8 @@
 from dominoc import ir
-from typing import Any, List, Union, Tuple
+from typing import Any, List, Union, Tuple, Optional
 from ..base import IRBase
 from ..type_system.dtype import DTypeKind, DType
+from functools import reduce
 
 # helper function
 _dtype = DType.make
@@ -16,7 +17,8 @@ __all__ = [
     "CondAll", "CondAny",
     "ConstInt", "ConstUInt", "ConstFloat", "ConstBFloat", "ConstTFloat", "ConstString", "make_const",
     "Var", "IterTypeKind", "Iterator", "NdLoad", "Load", "MapVar", "Slice", "MemSlice", "Call",
-    "_to_expr", "cast"
+    "PackValue",
+    "_to_expr", "cast", "pack_value"
 ]
 
 
@@ -242,11 +244,11 @@ def _to_expr(expr):
     raise ValueError(f"Can't covert {expr} to Expr.")
 
 
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 ##
 # Non-Terminal IR Node
 ##
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 
 
 class BinExpr(ir.BinExpr, Expr):
@@ -285,11 +287,11 @@ class MemRef(ir.MemRef, Expr):
         ir.MemRef.__init__(self, var, offset)
         Expr.__init__(self, _dtype("mem_ref"))
 
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 ##
 # Binary Operation IR Node
 ##
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 
 
 class Add(ir.Add, BinExpr):
@@ -406,11 +408,11 @@ class NE(ir.NE, BinExpr):
         BinExpr.__init__(self, self.dtype, a, b)
 
 
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 ##
 # Unary Operation IR Node
 ##
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 class Cast(ir.Cast, UniExpr):
     def __init__(self, dtype: DType, a: Expr):
         a = _to_expr(a)
@@ -460,11 +462,11 @@ class Floor(ir.Floor, UniExpr):
         UniExpr.__init__(self, self.dtype, a)
 
 
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 ##
 # Ternary Operation IR Node
 ##
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 class Select(ir.Select, TerExpr):
     def __init__(self, cond: Expr, true_branch: Expr, false_branch: Expr):
         cond = _to_expr(cond)
@@ -474,16 +476,26 @@ class Select(ir.Select, TerExpr):
         TerExpr.__init__(self, self.dtype, cond, true_branch, false_branch)
 
 
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 ##
 # Range IR Node
 ##
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 class Range(ir.Range, Expr):
-    def __init__(self, beg: Expr, extent: Expr, step: Expr):
-        beg = _to_expr(beg)
-        extent = _to_expr(extent)
-        step = _to_expr(step)
+    def __init__(self, beg: Expr, extent: Optional[Expr] = None, step: Optional[Expr] = None):
+        if extent is None:
+            assert step is None
+            extent = _to_expr(beg)
+            beg = _to_expr(0)
+            step = _to_expr(1)
+        else:
+            beg = _to_expr(beg)
+            extent = _to_expr(extent)
+            if step is None:
+                step = _to_expr(1)
+            else:
+                step = _to_expr(step)
+
         ir.Range.__init__(self, beg, extent, step)
         Expr.__init__(self, self.dtype)
 
@@ -498,12 +510,18 @@ class ExprList(ir.ExprList, Expr):
         assert idx < len(self.value_list), "Index out of range."
         return self.value_list[idx]
 
+    def __len__(self):
+        return len(self.value_list)
 
-##=-------------------------------------------------------------------=##
+    def __iter__(self):
+        return iter(self.value_list)
+
+
+## =-------------------------------------------------------------------=##
 ##
 # Variable Operands Operation IR Node
 ##
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 class CondAll(ir.CondAll, Expr):
     def __init__(self, phases: List[Expr]):
         phases = [_to_expr(x) for x in phases]
@@ -518,11 +536,11 @@ class CondAny(ir.CondAny, Expr):
         Expr.__init__(self, self.dtype)
 
 
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 ##
 # Constant IR Node
 ##
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 class ConstInt(ir.ConstInt, ConstExpr):
     def __init__(self, value: int, bits: int = 32, lane: int = 1):
         ir.ConstInt.__init__(self, value, bits, lane)
@@ -559,47 +577,24 @@ class ConstString(ir.ConstString, ConstExpr):
         ConstExpr.__init__(self, self.dtype)
 
 
-def make_const(value, dtype):
-    dtype = DType.make(dtype)
-    if dtype.is_int():
-        return ConstInt(value, dtype.bits, dtype.lane)
-    elif dtype.is_uint():
-        return ConstUInt(value, dtype.bits, dtype.lane)
-    elif dtype.is_float():
-        return ConstFloat(value, dtype.bits, dtype.lane)
-    elif dtype.is_bfloat():
-        return ConstBFloat(value, dtype.bits, dtype.lane)
-    elif dtype.is_tfloat():
-        return ConstTFloat(value, dtype.bits, dtype.lane)
-    elif dtype.is_string():
-        return ConstString(value)
-    else:
-        raise NotImplementedError(f"Can't make const {dtype}.")
-    
-
-def cast(dtype, value):
-    dtype = DType.make(dtype)
-    return Cast(dtype, value)
-
-
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 ##
 # Mutable IR Node
 ##
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 class Var(ir.Var, MutableExpr):
     def __init__(self, dtype: Union[DType, str], name: str = ""):
         if isinstance(name, ConstString):
             name = name.value
-        ir.Var.__init__(self, _dtype(dtype), name)
+        ir.Var.__init__(self, DType.make(dtype), name)
         MutableExpr.__init__(self, self.dtype)
 
 
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 ##
 # Iterator IR Node
 ##
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 # class IterTypeKind(enum.Enum):
 #     Spatial = 0
 #     Reduce = 1
@@ -623,11 +618,11 @@ class Iterator(ir.Iterator, Expr):
         Expr.__init__(self, self.dtype)
 
 
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 ##
 # Load IR Node
 ##
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 class NdLoad(ir.NdLoad, Expr):
     def __init__(self, mem_ref: MemRef, indices: List[Expr]):
         indices = ExprList([_to_expr(x) for x in indices])
@@ -642,23 +637,24 @@ class Load(ir.Load, Expr):
         Expr.__init__(self, self.dtype)
 
 
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 ##
 # Map IR Node
 ##
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 class MapVar(ir.MapVar, Expr):
-    def __init__(self, name: str, expr: Expr):
+    def __init__(self, var: Var, expr: Expr):
+        assert isinstance(var, Var)
         expr = _to_expr(expr)
-        ir.MapVar.__init__(self, name, expr)
+        ir.MapVar.__init__(self, var, expr)
         Expr.__init__(self, self.dtype)
 
 
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 ##
 # Memory Reference IR Node
 ##
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 class Slice(ir.Slice, Expr):
     def __init__(self, indices: List[Range]):
         ir.Slice.__init__(self, indices)
@@ -675,14 +671,59 @@ class MemSlice(ir.MemSlice, MemRef):
         MemRef.__init__(self, var, offset)
 
 
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 ##
 # Call IR Node
 ##
-##=-------------------------------------------------------------------=##
+## =-------------------------------------------------------------------=##
 class Call(ir.Call, Expr):
     def __init__(self, dtype: DType, name: str, args: List[Union[Expr, str]]):
         new_args = [arg if isinstance(
             arg, Expr) else _to_expr(arg) for arg in args]
         ir.Call.__init__(self, dtype, name, ExprList(new_args))
         Expr.__init__(self, self.dtype)
+
+
+## =-------------------------------------------------------------------=##
+##
+# Other IR Nodes
+##
+## =-------------------------------------------------------------------=##
+
+class PackValue(ir.PackValue, Expr):
+    def __init__(self, dtype: DType, value_list: List[Expr]):
+        new_values = ExprList([_to_expr(v) for v in value_list])
+        ir.PackValue.__init__(self, dtype, new_values)
+        Expr.__init__(self, self.dtype)
+
+
+def make_const(value, dtype):
+    dtype = DType.make(dtype)
+    if dtype.is_int():
+        return ConstInt(value, dtype.bits, dtype.lane)
+    elif dtype.is_uint():
+        return ConstUInt(value, dtype.bits, dtype.lane)
+    elif dtype.is_float():
+        return ConstFloat(value, dtype.bits, dtype.lane)
+    elif dtype.is_bfloat():
+        return ConstBFloat(value, dtype.bits, dtype.lane)
+    elif dtype.is_tfloat():
+        return ConstTFloat(value, dtype.bits, dtype.lane)
+    elif dtype.is_string():
+        return ConstString(value)
+    else:
+        raise NotImplementedError(f"Can't make const {dtype}.")
+
+
+def cast(dtype, value):
+    dtype = DType.make(dtype)
+    return Cast(dtype, value)
+
+
+def pack_value(dtype, values):
+    dtype = DType.make(dtype)
+    sum_bits = reduce(lambda x, y: x + y, [v.dtype.bits for v in values], 0)
+    if sum_bits != dtype.bits:
+        raise ValueError(
+            "pack_value requires the total bits of each value equals to the given dtype bits.")
+    return PackValue(dtype, values)

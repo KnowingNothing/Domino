@@ -27,9 +27,12 @@ class KernelSignatureNode : public IRBaseNode {
  public:
   std::string kernel_name;
   std::vector<Var> kernel_args;
+  std::vector<Var> scalar_args;
 
-  KernelSignatureNode(std::string name, std::vector<Var> args)
-      : kernel_name(std::move(name)), kernel_args(std::move(args)) {}
+  KernelSignatureNode(std::string name, std::vector<Var> args, std::vector<Var> scalars)
+      : kernel_name(std::move(name)),
+        kernel_args(std::move(args)),
+        scalar_args(std::move(scalars)) {}
 };
 
 using KernelSignature = Ref<KernelSignatureNode>;
@@ -56,6 +59,9 @@ class KernelNode : public IRBaseNode {
     std::vector<std::string> args;
     for (auto arg : this->signature->kernel_args) {
       args.push_back(fmt::format("{}* {}", std::string(arg->dtype), arg->id->value));
+    }
+    for (auto arg : this->signature->scalar_args) {
+      args.push_back(fmt::format("{} {}", std::string(arg->dtype), arg->id->value));
     }
     return fmt::format("void {}({})", this->signature->kernel_name, fmt::join(args, ", "));
   }

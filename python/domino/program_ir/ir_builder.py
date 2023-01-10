@@ -4,8 +4,11 @@ from .stmt import *
 from .kernel import *
 from .dsl import *
 from .functional import print_ir
-from ..codegen import codegen_c
-from typing import Optional
+from ..codegen import *
+from ..type_system.dtype import DType
+from typing import Optional, Union, List, Any
+from functools import reduce
+from .simplify import substitute_block
 
 __all__ = [
     "program_lower",
@@ -36,6 +39,10 @@ class Array(object):
         self.slices = tuple(slice(0, s, 1)
                             for s in self.shape) if slices is None else tuple(slices)
         assert len(self.slices) == len(self.shape)
+
+    @property
+    def dtype(self):
+        return self.var.dtype
 
     def calculate_slice_indices(self, indices):
         if self.origin is None:
@@ -235,7 +242,17 @@ class StmtBlockContext(BlockContext):
         self.stmt = stmt
         node = TreeContainer(self)
         self.ir_builder.stack[-1].add_child(node)
-        # self.stack.append(node)
+
+
+class ReMapBlockContext(BlockContext):
+    def __init__(self, ir_builder, map_vars: List[MapVar]):
+        super(ReMapBlockContext, self).__init__(ir_builder)
+        for m in map_vars:
+            assert isinstance(m, MapVar)
+        self.map_vars = map_vars
+        node = TreeContainer(self)
+        self.ir_builder.stack[-1].add_child(node)
+        self.ir_builder.stack.append(node)
 
 
 class TreeContainer(object):
@@ -267,6 +284,9 @@ class IRBuilderContext(object):
         assert isinstance(tensor, Tensor)
         self.input_tensor_map[var] = tensor
 
+    ## =---------------------------------------------------=##
+    ## =         Implementation of primitives              =##
+    ## =---------------------------------------------------=##
     def alloc(self, shape, scope="global", dtype="float32", name=""):
         alloc_ctx = AllocBlockContext(
             self, shape, scope=scope, dtype=dtype, name=name)
@@ -282,14 +302,40 @@ class IRBuilderContext(object):
             self, IterTypeKind.Reduce, names=names, ranges=ranges, bindings=bindings)
         return for_ctx
 
+    def unroll_for(self, names=None, ranges=None, bindings=None):
+        for_ctx = ForBlockContext(
+            self, IterTypeKind.Unroll, names=names, ranges=ranges, bindings=bindings)
+        return for_ctx
+
     def zigzag_for(self, names=None, ranges=None, bindings=None):
-        raise NotImplementedError()
+        for_ctx = ForBlockContext(
+            self, IterTypeKind.Zigzag, names=names, ranges=ranges, bindings=bindings)
+        return for_ctx
+
+    def map_var(self, name: str, expr: Expr):
+        v = Var(expr.dtype, name)
+        m = MapVar(v, expr)
+        remap_ctx = ReMapBlockContext(
+            self, [m]
+        )
+        return v
 
     def fill(self, array, value):
         raise NotImplementedError()
 
     def load(self, target, lambda_func):
-        raise NotImplementedError()
+        if isinstance(target, Array):
+            assert len(lambda_func.__code__.co_varnames) == len(target.shape)
+            shape = []
+            for s in target.shape:
+                assert isinstance(s, (int, ConstInt))
+                if isinstance(s, ConstInt):
+                    shape.append(s.value)
+                else:
+                    shape.append(s)
+            raise NotImplementedError()
+        else:
+            assert len(lambda_func.__code__.co_varnames) == 0
 
     def store(self, source, lambda_func):
         if isinstance(source, Array):
@@ -303,6 +349,9 @@ class IRBuilderContext(object):
     def mma(self, output=None, input_a=None, input_b=None, input_c=None, layout_a=None, layout_b=None):
         raise NotImplementedError()
 
+    ## =---------------------------------------------------=##
+    ## =                  Build Program                    =##
+    ## =---------------------------------------------------=##
     def build(self):
         def builder(cur):
             sub_trees = [builder(x) for x in cur.children]
@@ -310,20 +359,48 @@ class IRBuilderContext(object):
                 assert len(sub_trees) == 1
                 return sub_trees[0]
             elif isinstance(cur.ctx, ForBlockContext):
-                assert len(sub_trees) >= 1, len(sub_trees)
-                body = sub_trees[-1]
-                for i in range(len(sub_trees) - 1):
-                    body = SeqBlock(sub_trees[len(sub_trees) - i - 2], body)
+                if len(sub_trees) > 0:
+                    body = sub_trees[-1]
+                    for i in range(len(sub_trees) - 1):
+                        body = SeqBlock(
+                            sub_trees[len(sub_trees) - i - 2], body)
+                else:
+                    body = Evaluate(0)
                 num_loops = len(cur.ctx.var_list)
-                for i in range(num_loops):
-                    body = ForBlock(
-                        Iterator(cur.ctx.var_list[i], cur.ctx.ranges[i], cur.ctx.iter_type), body, cur.ctx.bindings[i])
+                if cur.ctx.iter_type == IterTypeKind.Spatial or cur.ctx.iter_type == IterTypeKind.Reduce:
+                    for i in range(num_loops):
+                        body = ForBlock(
+                            Iterator(cur.ctx.var_list[i], cur.ctx.ranges[i], cur.ctx.iter_type), body, cur.ctx.bindings[i])
+                elif cur.ctx.iter_type == IterTypeKind.Unroll:
+                    for i in range(num_loops):
+                        if not (cur.ctx.ranges[i].extent.is_const() and cur.ctx.ranges[i].step.is_const()):
+                            raise RuntimeError("Can't unroll dynamic loops")
+                        extent = cur.ctx.ranges[i].extent if isinstance(
+                            cur.ctx.ranges[i].extent, int) else cur.ctx.ranges[i].extent.value
+                        step = cur.ctx.ranges[i].step if isinstance(
+                            cur.ctx.ranges[i].step, int) else cur.ctx.ranges[i].step.value
+                        loop_var = cur.ctx.var_list[i]
+                        bodies = []
+                        for it in range(0, extent, step):
+                            change_map = {loop_var: Add(
+                                cur.ctx.ranges[i].beg, ConstInt(it))}
+                            b = substitute_block(body, change_map)
+                            bodies.append(b)
+                        assert len(bodies) > 0
+                        body = bodies[-1]
+                        for i in range(len(bodies) - 1):
+                            body = SeqBlock(bodies[len(bodies) - i - 2], body)
+                else:
+                    raise NotImplementedError()
                 return body
             elif isinstance(cur.ctx, AllocBlockContext):
-                assert len(sub_trees) >= 1
-                body = sub_trees[-1]
-                for i in range(len(sub_trees) - 1):
-                    body = SeqBlock(sub_trees[len(sub_trees) - i - 2], body)
+                if len(sub_trees) > 0:
+                    body = sub_trees[-1]
+                    for i in range(len(sub_trees) - 1):
+                        body = SeqBlock(
+                            sub_trees[len(sub_trees) - i - 2], body)
+                else:
+                    body = Evaluate(0)
                 body = NdAllocBlock(
                     cur.ctx.array.var, cur.ctx.array.shape, cur.ctx.array.scope, body)
                 return body
@@ -337,6 +414,17 @@ class IRBuilderContext(object):
                 # else:
                 #     body = cur.ctx.stmt
                 #     return body
+            elif isinstance(cur.ctx, ReMapBlockContext):
+                if len(sub_trees) > 0:
+                    body = sub_trees[-1]
+                    for i in range(len(sub_trees) - 1):
+                        body = SeqBlock(
+                            sub_trees[len(sub_trees) - i - 2], body)
+                else:
+                    body = Evaluate(0)
+                body = ReMapBlock(
+                    cur.ctx.map_vars, body)
+                return body
             else:
                 raise NotImplementedError()
         ret = builder(self.tree)
@@ -354,12 +442,14 @@ def program_lower(func, tensor_inputs, scalar_inputs=None, ctx=None):
         array = Array(ctx, v, t.shape)
         input_arrays.append(array)
         ctx.bind_array(v, array)
-    assert scalar_inputs is None, "Currently don't support scalar inputs"
 
-    func(ctx, *input_arrays)
+    scalar_inputs = [] if scalar_inputs is None else scalar_inputs
+
+    func(ctx, *input_arrays, *scalar_inputs)
     body = ctx.build()
 
-    signature = KernelSignature(func.__name__, tensor_input_vars)
+    signature = KernelSignature(
+        func.__name__, tensor_input_vars, scalar_inputs)
     kernel = Kernel(signature, body)
     return kernel
 
@@ -370,19 +460,21 @@ def program_build(func, tensor_inputs=None, scalar_inputs=None, ctx=None, target
         ctx = IRBuilderContext() if ctx is None else ctx
         assert isinstance(ctx, IRBuilderContext)
         kernel = program_lower(func, tensor_inputs,
-                       scalar_inputs=scalar_inputs, ctx=ctx)
+                               scalar_inputs=scalar_inputs, ctx=ctx)
     else:
         assert ctx is not None and isinstance(ctx, IRBuilderContext)
         kernel = func
 
     for k, v in ctx.array_map.items():
         print(k, v)
-    
+
     if target == "c":
         code = codegen_c(kernel.body)
+    elif target == "arm_m":
+        code = codegen_arm_m(kernel.body)
     else:
         raise NotImplementedError()
-    
+
     kernel.source = code
-    
+
     return kernel

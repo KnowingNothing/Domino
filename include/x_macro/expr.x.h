@@ -54,5 +54,6 @@ X_DECL_EXPR(MapVar)
 X_DECL_EXPR(Slice)
 X_DECL_EXPR(MemSlice)
 X_DECL_EXPR(Call)
+X_DECL_EXPR(PackValue)
 
 #undef X_DECL_EXPR

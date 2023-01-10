@@ -144,6 +144,8 @@ class CodeGenBase : public IRFunctor<std::string()> {
     return fmt::format("({}({}))", Visit(op->func), Visit(op->args));
   }
 
+  // std::string ImplVisit(PackValue op) override not implemented
+
   /// statements
   std::string ImplVisit(NdStore op) override {
     return fmt::format("{}[{}] = {};", Visit(op->mem_ref), Visit(op->indices), Visit(op->value));
@@ -213,14 +215,13 @@ class CodeGenBase : public IRFunctor<std::string()> {
 
   std::string ImplVisit(ReMapBlock op) override {
     std::string ind = make_indent();
-    increase_indent();
     std::string body_str = Visit(op->body);
-    decrease_indent();
     std::vector<std::string> mapping;
     for (auto m : op->mappings) {
-      mapping.push_back(Visit(m));
+      mapping.push_back(ind + Visit(m) + ";\n");
     }
-    return fmt::format("{}{}{}", ind, fmt::join(mapping, ";\n" + ind), body_str);
+
+    return fmt::format("{}{}", fmt::join(mapping, ""), body_str);
   }
 
   std::string ImplVisit(NdAllocBlock op) override {

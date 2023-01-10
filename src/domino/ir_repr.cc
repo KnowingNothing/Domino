@@ -145,6 +145,10 @@ class IRPrinter : public IRFunctor<std::string()> {
     return fmt::format("{}({})", Visit(op->func), Visit(op->args));
   }
 
+  std::string ImplVisit(PackValue op) override {
+    return fmt::format("pack({}, [{}])", std::string(op->dtype), Visit(op->value_list));
+  }
+
   /// statements
   std::string ImplVisit(NdStore op) override {
     return fmt::format("store_n({}, {}, {});", Visit(op->mem_ref), Visit(op->indices),

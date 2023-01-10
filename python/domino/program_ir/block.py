@@ -20,16 +20,16 @@ class Block(ir.Block):
 
 
 def _to_block(block: Any):
-    if isinstance(block, Block):
+    if isinstance(block, ir.Block):
         return block
-    if isinstance(block, Stmt):
+    if isinstance(block, ir.Stmt):
         return AtomBlock(block)
     else:
         try:
             block = _to_stmt(block)
             return AtomBlock(block)
         except ValueError:
-            raise ValueError(f"Can't convert {block} to Block.")
+            raise ValueError(f"Can't convert {ir.print_ir(block)} to Block.")
 
 
 class AttrBlock(ir.AttrBlock, Block):

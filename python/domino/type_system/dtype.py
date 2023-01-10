@@ -123,7 +123,7 @@ class DType(dominoc.DType, TypeBase):
 
     @classmethod
     def make(cls, obj: "GeneralDType") -> "DType":
-        if isinstance(obj, DType):
+        if isinstance(obj, dominoc.DType):
             return obj
         return cls.from_string(obj)
 

@@ -298,6 +298,27 @@ class ExprSubstituter : public ExprMutator {
 Expr SubstituteExpr(Expr expr, std::unordered_map<Var, Expr> mapping);
 
 /**
+ * \brief Function for statement substitution
+ * \param stmt The statement to be substituted
+ * \param mapping The mapping used in substitution
+ */
+Stmt SubstituteStmt(Stmt stmt, std::unordered_map<Var, Expr> mapping);
+
+/**
+ * \brief Function for block substitution
+ * \param block The block to be substituted
+ * \param mapping The mapping used in substitution
+ */
+Block SubstituteBlock(Block block, std::unordered_map<Var, Expr> mapping);
+
+/**
+ * \brief Function for IR substitution
+ * \param expr The expression to be substituted
+ * \param mapping The mapping used in substitution
+ */
+IRBase SubstituteIR(IRBase ir, std::unordered_map<Var, Expr> mapping);
+
+/**
  * \brief Class that simplifies an expression according to a set of patterns
  *
  * The current simplifier iterations the given list of rules in order and

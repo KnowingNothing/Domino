@@ -27,7 +27,7 @@ using Block = Ref<BlockNode>;
 
 class AttrBlockNode : public BlockNode {
  public:
-  AttrBlockNode(std::string key, IRBase obj, IRBase value, Block body)
+  AttrBlockNode(std::string key, Var obj, Expr value, Block body)
       : key(ConstString::make(std::move(key))),
         obj(std::move(obj)),
         value(std::move(value)),
@@ -38,7 +38,7 @@ class AttrBlockNode : public BlockNode {
     ASSERT(this->body.defined());
   }
 
-  AttrBlockNode(ConstString key, IRBase obj, IRBase value, Block body)
+  AttrBlockNode(ConstString key, Var obj, Expr value, Block body)
       : key(std::move(key)), obj(std::move(obj)), value(std::move(value)), body(std::move(body)) {
     ASSERT(this->key.defined());
     ASSERT(this->obj.defined());
@@ -47,8 +47,8 @@ class AttrBlockNode : public BlockNode {
   }
 
   ConstString key;
-  IRBase obj;
-  IRBase value;
+  Var obj;
+  Expr value;
   Block body;
 };
 
