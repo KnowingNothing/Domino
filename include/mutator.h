@@ -8,6 +8,8 @@ namespace domino {
 
 class ExprMutator : public IRFunctor<Expr()> {
  protected:
+  Expr ImplVisit(Expr op) override { return op; }
+
   Expr ImplVisit(MemRef op) override {
     Expr var = Visit(op->var);
     Var as_var = var.as<VarNode>();
@@ -63,28 +65,6 @@ class ExprMutator : public IRFunctor<Expr()> {
     ASSERT(as_list.defined());
     return CondAny::make(as_list);
   }
-
-  Expr ImplVisit(ConstInt op) override {
-    return ConstInt::make(op->value, op->dtype.bits, op->dtype.lane);
-  }
-
-  Expr ImplVisit(ConstUInt op) override {
-    return ConstUInt::make(op->value, op->dtype.bits, op->dtype.lane);
-  }
-
-  Expr ImplVisit(ConstFloat op) override {
-    return ConstFloat::make(op->value, op->dtype.bits, op->dtype.lane);
-  }
-
-  Expr ImplVisit(ConstBFloat op) override {
-    return ConstBFloat::make(op->value, op->dtype.bits, op->dtype.lane);
-  }
-
-  Expr ImplVisit(ConstTFloat op) override {
-    return ConstTFloat::make(op->value, op->dtype.bits, op->dtype.lane);
-  }
-
-  Expr ImplVisit(ConstString op) override { return ConstString::make(op->value); }
 
   Expr ImplVisit(Var op) override {
     Expr id = Visit(op->id);
@@ -170,6 +150,8 @@ class ExprMutator : public IRFunctor<Expr()> {
 
 class StmtMutator : public IRFunctor<Stmt()> {
  protected:
+  Stmt ImplVisit(Stmt op) override { return op; }
+
   Stmt ImplVisit(NdStore op) override {
     Expr mem_ref = VisitExpr(op->mem_ref);
     MemRef as_ref = mem_ref.as<MemRefNode>();
@@ -190,12 +172,9 @@ class StmtMutator : public IRFunctor<Stmt()> {
   Stmt ImplVisit(Evaluate op) override { return Evaluate::make(VisitExpr(op->expr)); }
 
  public:
-  StmtMutator() {
-    expr_mutator = new ExprMutator();
-    need_release = true;
-  }
+  StmtMutator() : expr_mutator(new ExprMutator()) {}
   ~StmtMutator() {
-    if (need_release) {
+    if (expr_mutator != nullptr) {
       delete expr_mutator;
     }
   }
@@ -204,11 +183,12 @@ class StmtMutator : public IRFunctor<Stmt()> {
 
  private:
   ExprMutator* expr_mutator = nullptr;
-  bool need_release = false;
 };
 
 class BlockMutator : public IRFunctor<Block()> {
  protected:
+  Block ImplVisit(Block op) override { return op; }
+
   Block ImplVisit(AttrBlock op) override {
     Expr key = VisitExpr(op->key);
     ConstString as_str = key.as<ConstStringNode>();
@@ -303,12 +283,9 @@ class BlockMutator : public IRFunctor<Block()> {
   }
 
  public:
-  BlockMutator() {
-    stmt_mutator = new StmtMutator();
-    need_release = true;
-  }
+  BlockMutator() : stmt_mutator(new StmtMutator()) {}
   ~BlockMutator() {
-    if (need_release) {
+    if (stmt_mutator != nullptr) {
       delete stmt_mutator;
     }
   }
@@ -318,7 +295,6 @@ class BlockMutator : public IRFunctor<Block()> {
 
  private:
   StmtMutator* stmt_mutator = nullptr;
-  bool need_release = false;
 };
 
 }  // namespace domino
