@@ -64,9 +64,9 @@ class DType {
     ASSERT(is_int() || is_uint()) << "Only support get max_limit for int/uint.";
     long long ret = -1;
     if (is_int()) {
-      ret = (1L << (bits - 1)) - 1;
+      ret = (1LL << (bits - 1)) - 1;
     } else if (is_uint()) {
-      ret = (1 << bits) - 1;
+      ret = (1LL << bits) - 1;
     }
     ASSERT(ret > 0) << "Value overflow.";
     return ret;
@@ -77,7 +77,7 @@ class DType {
     ASSERT(is_int() || is_uint()) << "Only support get min_limit for int/uint.";
     long long ret = 1;
     if (is_int()) {
-      ret = -(1L << (bits - 1));
+      ret = -(1LL << (bits - 1));
     } else if (is_uint()) {
       ret = 0;
     }
@@ -135,7 +135,7 @@ class DType {
       kind = DTypeKind::kUNKNOWN;
       default_bits = 0;
     } else {
-      std::string message = std::string(fmt::format("Cant't parse type string {}.", dtype_str));
+      std::string message = fmt::format("Cant't parse type string {}.", dtype_str);
       throw std::runtime_error(message);
     }
 
@@ -178,10 +178,12 @@ class DType {
 
   bool operator==(const std::string& other_str) const {
     DType other = DType::make(other_str);
-    return (type_kind == other.type_kind) && (bits == other.bits) && (lane == other.lane);
+    return *this == other;
   }
 
-  bool operator!=(const DType& other) const { return !((*this) == other); }
+  bool operator!=(const DType& other) const { return !(*this == other); }
+
+  bool operator!=(const std::string& other_str) const { return !(*this == other_str); }
 
   DTypeKind type_kind;
   int bits;
