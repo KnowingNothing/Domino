@@ -52,33 +52,12 @@ class ExprSimplifyPatternMatcher : public IRFunctor<bool(Expr)> {
     return Visit(op->var, as_op->var) && Visit(op->offset, as_op->offset);
   }
 
-#define VISIT_BIN(OP)                                        \
+#define X_DECL_BIN_EXPR(OP)                                  \
   bool ImplVisit(OP op, Expr other) override {               \
     GENERAL_VISIT(OP)                                        \
     return Visit(op->a, as_op->a) && Visit(op->b, as_op->b); \
   }
-
-  VISIT_BIN(Add)
-  VISIT_BIN(Sub)
-  VISIT_BIN(Mul)
-  VISIT_BIN(Div)
-  VISIT_BIN(Mod)
-  VISIT_BIN(FloorDiv)
-  VISIT_BIN(FloorMod)
-  VISIT_BIN(And)
-  VISIT_BIN(Or)
-  VISIT_BIN(XOr)
-  VISIT_BIN(BitAnd)
-  VISIT_BIN(BitOr)
-  VISIT_BIN(BitXOr)
-  VISIT_BIN(GT)
-  VISIT_BIN(GE)
-  VISIT_BIN(LT)
-  VISIT_BIN(LE)
-  VISIT_BIN(EQ)
-  VISIT_BIN(NE)
-
-#undef VISIT_BIN
+#include <x_macro/bin_expr.x.h>
 
   bool ImplVisit(Cast op, Expr other) override {
     GENERAL_VISIT(Cast)

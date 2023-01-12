@@ -15,30 +15,9 @@ class ExprMutator : public IRFunctor<Expr()> {
     return MemRef::make(as_var, Visit(op->offset));
   }
 
-#define VISIT_BIN(OP) \
+#define X_DECL_BIN_EXPR(OP) \
   Expr ImplVisit(OP op) override { return OP::make(Visit(op->a), Visit(op->b)); }
-
-  VISIT_BIN(Add)
-  VISIT_BIN(Sub)
-  VISIT_BIN(Mul)
-  VISIT_BIN(Div)
-  VISIT_BIN(Mod)
-  VISIT_BIN(FloorDiv)
-  VISIT_BIN(FloorMod)
-  VISIT_BIN(And)
-  VISIT_BIN(Or)
-  VISIT_BIN(XOr)
-  VISIT_BIN(BitAnd)
-  VISIT_BIN(BitOr)
-  VISIT_BIN(BitXOr)
-  VISIT_BIN(GT)
-  VISIT_BIN(GE)
-  VISIT_BIN(LT)
-  VISIT_BIN(LE)
-  VISIT_BIN(EQ)
-  VISIT_BIN(NE)
-
-#undef VISIT_BIN
+#include <x_macro/bin_expr.x.h>
 
   Expr ImplVisit(Cast op) override { return Cast::make(op->dtype, Visit(op->a)); }
 

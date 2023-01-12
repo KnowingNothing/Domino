@@ -118,32 +118,12 @@ PYBIND11_MODULE(dominoc, m) {
       .def_readonly("offset", &MemRefNode::offset);
 
   /// bind binary IR Node
-#define BIND_BIN_IR_NODE(NAME)                                             \
+#define X_DECL_BIN_EXPR(NAME)                                              \
   py::class_<NAME##Node, NAME>(ir_m, #NAME, pyBinExpr)                     \
       .def(py::init<Expr, Expr>())                                         \
       .def("__repr__", [](const NAME##Node& d) { return std::string(d); }) \
       .def("__str__", [](const NAME##Node& d) { return std::string(d); });
-
-  BIND_BIN_IR_NODE(Add);
-  BIND_BIN_IR_NODE(Sub);
-  BIND_BIN_IR_NODE(Mul);
-  BIND_BIN_IR_NODE(Div);
-  BIND_BIN_IR_NODE(Mod);
-  BIND_BIN_IR_NODE(FloorDiv);
-  BIND_BIN_IR_NODE(FloorMod);
-  BIND_BIN_IR_NODE(And);
-  BIND_BIN_IR_NODE(Or);
-  BIND_BIN_IR_NODE(XOr);
-  BIND_BIN_IR_NODE(BitAnd);
-  BIND_BIN_IR_NODE(BitOr);
-  BIND_BIN_IR_NODE(BitXOr);
-  BIND_BIN_IR_NODE(GT);
-  BIND_BIN_IR_NODE(GE);
-  BIND_BIN_IR_NODE(LT);
-  BIND_BIN_IR_NODE(LE);
-  BIND_BIN_IR_NODE(EQ);
-  BIND_BIN_IR_NODE(NE);
-#undef BIND_BIN_IR_NODE
+#include <x_macro/bin_expr.x.h>
 
   /// bind unary IR Node
 #define BIND_UNI_IR_NODE(NAME)                                             \
