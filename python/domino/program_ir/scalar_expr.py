@@ -10,7 +10,7 @@ _dtype = DType.make
 __all__ = [
     "Expr", "BinExpr", "UniExpr", "TerExpr", "ConstExpr", "MutableExpr",
     "MemRef", "ValueRef", "ArrayRef",
-    "Add", "Sub", "Mul", "Div", "Mod", "FloorDiv", "FloorMod", "And", "Or",
+    "Add", "Sub", "Mul", "Div", "Mod", "FloorDiv", "FloorMod", "Max", "Min", "And", "Or",
     "XOr", "BitAnd", "BitOr", "BitXOr", "GT", "GE", "LT", "LE", "EQ", "NE",
     "Cast", "Broadcast", "Neg", "Not", "BitNot", "Ceil", "Floor",
     "Select",
@@ -19,7 +19,7 @@ __all__ = [
     "ConstInt", "ConstUInt", "ConstFloat", "ConstBFloat", "ConstTFloat", "ConstString", "make_const",
     "Var", "IterTypeKind", "Iterator", "NdLoad", "Load", "MapVar", "Slice", "MemSlice", "Call",
     "PackValue",
-    "_to_expr", "cast", "pack_value"
+    "_to_expr", "cast", "pack_value", "clip"
 ]
 
 
@@ -347,6 +347,18 @@ class FloorDiv(ir.FloorDiv, BinExpr):
 class FloorMod(ir.FloorMod, BinExpr):
     def __init__(self, a: Expr, b: Expr):
         ir.FloorMod.__init__(self, a, b)
+        BinExpr.__init__(self, a.dtype, a, b)
+
+
+class Max(ir.Max, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.Max.__init__(self, a, b)
+        BinExpr.__init__(self, a.dtype, a, b)
+
+
+class Min(ir.Min, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.Min.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
@@ -742,3 +754,7 @@ def pack_value(dtype, values):
         raise ValueError(
             "pack_value requires the total bits of each value equals to the given dtype bits.")
     return PackValue(dtype, values)
+
+
+def clip(value, lower, upper):
+    return Max(lower, Min(upper, value))

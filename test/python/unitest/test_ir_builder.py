@@ -61,74 +61,61 @@ def test_vector_add_dynamic_shape_c():
 
 def test_matmul_dynamic_shape_mcu():
 
-    # Quantize constants
-    CLIP_MIN = 0
-    CLIP_MAX = 255
-
-    # optimization parameters
-    NI = 2
     MI = 2
+    NI = 4
+    KI = 16
 
     def matmul_s8s8s8_acc32_mx_n4x_k16x_row_col_mma_m2n2k16_aoffset(
-            ctx, A, B, C, scales, M, N, K, input_offset, output_offset):
-        # vA = ctx.alloc([MI, KI//2], scope="local", dtype="int32", name="vA")
-        # vB = ctx.alloc([NI, KI//2], scope="local", dtype="int32", name="vB")
-        # scale = ctx.alloc([NI], scope="local", dtype="float32", name="scale")
+            ctx, A, B, C, scales, M, N, K, input_offset, output_offset, clip_min, clip_max):
+
         input_offset_s16 = ctx.map_var(
             "input_offset_s16", cast("int16", input_offset))
         pack_input_offset = ctx.map_var("pack_input_offset", pack_value(
             "int32", [input_offset_s16, input_offset_s16]))
-        MO = ctx.map_var("MO", M//2)
-        NO = ctx.map_var("NO", N//4)
-        KO = ctx.map_var("KO", K//16)
+        MO, NO, KO = [ctx.map_var(name, value) for name, value in zip(
+            ["MO", "NO", "KO"], [M//MI, N//NI, K//KI])]
+
         with ctx.spatial_for("no", Range(NO)) as no:
-            scale0 = ctx.map_var("scale0", scales[no])
-            scale1 = ctx.map_var("scale1", scales[no + 1])
-            scale2 = ctx.map_var("scale1", scales[no + 2])
-            scale3 = ctx.map_var("scale1", scales[no + 3])
+            scale_array = [ctx.map_var(
+                f"scale{i}", scales[no + i]) for i in range(NI)]
             with ctx.spatial_for("mo", Range(MO)) as mo:
-                acc00 = ctx.map_var("acc00", make_const(0, "int32"))
-                acc01 = ctx.map_var("acc01", make_const(0, "int32"))
-                acc02 = ctx.map_var("acc02", make_const(0, "int32"))
-                acc03 = ctx.map_var("acc03", make_const(0, "int32"))
-                acc10 = ctx.map_var("acc10", make_const(0, "int32"))
-                acc11 = ctx.map_var("acc11", make_const(0, "int32"))
-                acc12 = ctx.map_var("acc12", make_const(0, "int32"))
-                acc13 = ctx.map_var("acc13", make_const(0, "int32"))
+                acc_array = [[ctx.map_var(f"acc{i}{j}", make_const(
+                    0, "int32")) for j in range(NI)] for i in range(MI)]
                 with ctx.reduce_for("ko", Range(KO)) as ko:
-                    ctx.call("ignore", "mma_m2n2k16_s8s8s8_acc32_aoffset", (
-                        MemRef(A.var, mo * 2 * K + ko *
-                               16), MemRef(B.var, no * 4 * K + ko * 16),
-                        MemRef(A.var, (mo + 1) * 2 * K + ko *
-                               16), MemRef(B.var, (no + 1) * 4 * K + ko * 16),
-                        pack_input_offset, acc00, acc01, acc10, acc11
-                    ))
-                    ctx.call("ignore", "mma_m2n2k16_s8s8s8_acc32_aoffset", (
-                        MemRef(A.var, mo * 2 * K + ko *
-                               16), MemRef(B.var, (no + 2) * 4 * K + ko * 16),
-                        MemRef(A.var, (mo + 1) * 2 * K + ko *
-                               16), MemRef(B.var, (no + 3) * 4 * K + ko * 16),
-                        pack_input_offset, acc02, acc03, acc12, acc13
-                    ))
-                C[(mo * 2) * N + no * 4] = cast("int8", cast("int32",
-                                         (cast("float", acc00) * scale0)) + output_offset)
-                C[(mo * 2) * N + no * 4 + 1] = cast("int8", cast("int32",
-                                             (cast("float", acc01) * scale1)) + output_offset)
-                C[(mo * 2) * N + no * 4 + 2] = cast("int8", cast("int32",
-                                             (cast("float", acc02) * scale2)) + output_offset)
-                C[(mo * 2) * N + no * 4 + 3] = cast("int8", cast("int32",
-                                             (cast("float", acc03) * scale3)) + output_offset)
-                C[(mo * 2 + 1) * N + no * 4] = cast("int8", cast("int32",
-                                             (cast("float", acc10) * scale0)) + output_offset)
-                C[(mo * 2 + 1) * N + no * 4 + 1] = cast("int8", cast(
-                    "int32", (cast("float", acc11) * scale1)) + output_offset)
-                C[(mo * 2 + 1) * N + no * 4 + 2] = cast("int8", cast(
-                    "int32", (cast("float", acc12) * scale2)) + output_offset)
-                C[(mo * 2 + 1) * N + no * 4 + 3] = cast("int8", cast(
-                    "int32", (cast("float", acc13) * scale3)) + output_offset)
+                    ptr_A = [MemRef(A.var, (mo * 2 + i) * K + ko * 16)
+                             for i in range(MI)]
+                    ptr_B = [MemRef(B.var, ((no * 4 + i) * K + ko * 16))
+                             for i in range(NI)]
+                    for ni in range(2):
+                        ctx.call(
+                            "ignore",
+                            "mma_m2n2k16_s8s8s8_acc32_aoffset",
+                            (
+                                ptr_A[0],
+                                ptr_B[ni * NI // 2],
+                                ptr_A[1],
+                                ptr_B[ni * NI // 2 + 1],
+                                pack_input_offset,
+                                acc_array[0][ni * NI // 2],
+                                acc_array[0][ni * NI // 2 + 1],
+                                acc_array[1][ni * NI // 2],
+                                acc_array[1][ni * NI // 2 + 1]
+                            ))
+
+                def requantize(acc_v, scale_v):
+                    tmp = ctx.map_var(f"tmp_{acc_v.id.value}", cast(
+                        "int32", (cast("float", acc_v) * scale_v)) + output_offset)
+                    return cast("int8", clip(tmp, clip_min, clip_max))
+
+                for mi in range(MI):
+                    for ni in range(NI):
+                        C[(mo * 2 + mi) * N + no * 4 +
+                          ni] = requantize(acc_array[mi][ni], scale_array[ni])
 
     input_offset = Var("int32", "input_offset")
     output_offset = Var("int32", "output_offset")
+    clip_max = Var("int32", "clip_max")
+    clip_min = Var("int32", "clip_min")
     M = Var("int32", "M")
     N = Var("int32", "N")
     K = Var("int32", "K")
@@ -138,11 +125,11 @@ def test_matmul_dynamic_shape_mcu():
     scales = Tensor([N], name="scales", dtype="float32")
 
     kernel = program_lower(matmul_s8s8s8_acc32_mx_n4x_k16x_row_col_mma_m2n2k16_aoffset, [A, B, C, scales], scalar_inputs=[
-                           M, N, K, input_offset, output_offset])
+                           M, N, K, input_offset, output_offset, clip_min, clip_max])
     print_ir(kernel.body)
 
     kernel = program_build(matmul_s8s8s8_acc32_mx_n4x_k16x_row_col_mma_m2n2k16_aoffset, [A, B, C, scales], scalar_inputs=[
-                           M, N, K, input_offset, output_offset], target="arm_m")
+                           M, N, K, input_offset, output_offset, clip_min, clip_max], target="arm_m")
     print(kernel.source)
     print(kernel.gen_function())
 

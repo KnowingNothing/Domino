@@ -43,6 +43,14 @@ class IRPrinter : public IRFunctor<std::string()> {
     return fmt::format("floormod({}, {})", Visit(op->a), Visit(op->b));
   }
 
+  std::string ImplVisit(Max op) override {
+    return fmt::format("max({}, {})", Visit(op->a), Visit(op->b));
+  }
+
+  std::string ImplVisit(Min op) override {
+    return fmt::format("min({}, {})", Visit(op->a), Visit(op->b));
+  }
+
   std::string ImplVisit(And op) override { return this->visit_bin_op(op, "&&"); }
 
   std::string ImplVisit(Or op) override { return this->visit_bin_op(op, "||"); }

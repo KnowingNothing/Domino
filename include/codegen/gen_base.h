@@ -14,6 +14,10 @@ class CodeGenBase : public IRFunctor<std::string()> {
  protected:
   /// expressions
   std::string ImplVisit(MemRef mem_ref) override {
+    ConstInt as_int = mem_ref->offset.as<ConstIntNode>();
+    if (as_int.defined() && (as_int->value == 0)) {
+      return fmt::format("{}", Visit(mem_ref->var));
+    }
     return fmt::format("({}+{})", Visit(mem_ref->var), Visit(mem_ref->offset));
   }
 
@@ -42,6 +46,18 @@ class CodeGenBase : public IRFunctor<std::string()> {
   std::string ImplVisit(FloorDiv op) override { return this->visit_bin_op(op, "/"); }
 
   // std::string ImplVisit(FloorMod op) override not implemented
+
+  std::string ImplVisit(Max op) override {
+    std::string a = Visit(op->a);
+    std::string b = Visit(op->b);
+    return fmt::format("({} > {} ? {} : {})", a, b, a, b);
+  }
+
+  std::string ImplVisit(Min op) override {
+    std::string a = Visit(op->a);
+    std::string b = Visit(op->b);
+    return fmt::format("({} > {} ? {} : {})", a, b, b, a);
+  }
 
   std::string ImplVisit(And op) override { return this->visit_bin_op(op, "&&"); }
 
@@ -162,7 +178,8 @@ class CodeGenBase : public IRFunctor<std::string()> {
 
   /// statements
   std::string ImplVisit(NdStore op) override {
-    return fmt::format("{}{} = {};", Visit(op->mem_ref), PrintNDimIndices(op->indices), Visit(op->value));
+    return fmt::format("{}{} = {};", Visit(op->mem_ref), PrintNDimIndices(op->indices),
+                       Visit(op->value));
   }
 
   std::string ImplVisit(Store op) override {

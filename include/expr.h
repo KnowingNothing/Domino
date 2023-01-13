@@ -301,6 +301,30 @@ class FloorModNode : public BinExprNode {
 
 using FloorMod = Ref<FloorModNode>;
 
+class MinNode : public BinExprNode {
+ public:
+  MinNode(Expr a, Expr b) : BinExprNode(a->dtype, a, b) {}
+
+  operator std::string() const override {
+    return fmt::format("Min({}, {}, {})", std::string(this->dtype), std::string(this->a),
+                       std::string(this->b));
+  }
+};
+
+using Min = Ref<MinNode>;
+
+class MaxNode : public BinExprNode {
+ public:
+  MaxNode(Expr a, Expr b) : BinExprNode(a->dtype, a, b) {}
+
+  operator std::string() const override {
+    return fmt::format("Max({}, {}, {})", std::string(this->dtype), std::string(this->a),
+                       std::string(this->b));
+  }
+};
+
+using Max = Ref<MaxNode>;
+
 class AndNode : public BinExprNode {
  public:
   AndNode(Expr a, Expr b) : BinExprNode(DType::make("bool"), a, b) {}
