@@ -175,6 +175,42 @@ class MemRefNode : public ExprNode {
 
 using MemRef = Ref<MemRefNode>;
 
+class ValueRefNode : public ExprNode {
+ public:
+  ValueRefNode(Var v) : ExprNode(DType::make("mem_ref")), var(std::move(v)) {
+    ASSERT(this->var.defined());
+  }
+
+  operator std::string() const override {
+    return fmt::format("ValueRef({{}, {}})", std::string(this->dtype), std::string(this->var));
+  }
+
+  Var var;
+};
+
+using ValueRef = Ref<ValueRefNode>;
+
+class ExprListNode;
+using ExprList = Ref<ExprListNode>;
+
+class ArrayRefNode : public ExprNode {
+ public:
+  ArrayRefNode(Var v, ExprList args)
+      : ExprNode(DType::make("mem_ref")), var(std::move(v)), args(std::move(args)) {
+    ASSERT(this->var.defined());
+    ASSERT(this->args.defined());
+  }
+
+  operator std::string() const override {
+    return fmt::format("ArrayRef({}, {})", std::string(this->var), std::string(this->args));
+  }
+
+  Var var;
+  ExprList args;
+};
+
+using ArrayRef = Ref<ArrayRefNode>;
+
 ///=----------------------------------------------------------------------------=///
 ///
 /// Binary Operation IR Node

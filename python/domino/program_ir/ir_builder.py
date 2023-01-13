@@ -346,8 +346,9 @@ class IRBuilderContext(object):
             stmt = NdStore(load.mem_ref, load.indices, source)
             store_ctx = StmtBlockContext(self, stmt)
 
-    def mma(self, output=None, input_a=None, input_b=None, input_c=None, layout_a=None, layout_b=None):
-        raise NotImplementedError()
+    def call(self, dtype: str, func_name: str, args: List[Expr]):
+        stmt = Evaluate(Call(dtype, func_name, args))
+        call_ctx = StmtBlockContext(self, stmt)
 
     ## =---------------------------------------------------=##
     ## =                  Build Program                    =##
@@ -439,7 +440,7 @@ def program_lower(func, tensor_inputs, scalar_inputs=None, ctx=None):
     input_arrays = []
     for v, t in zip(tensor_input_vars, tensor_inputs):
         ctx.bind_input(v, t)
-        array = Array(ctx, v, t.shape)
+        array = Array(ctx, v, [reduce(lambda x, y: x * y, t.shape, 1)])
         input_arrays.append(array)
         ctx.bind_array(v, array)
 

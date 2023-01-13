@@ -9,6 +9,8 @@ X_DECL_EXPR(TerExpr)
 X_DECL_EXPR(ConstExpr)
 X_DECL_EXPR(MutableExpr)
 X_DECL_EXPR(MemRef)
+X_DECL_EXPR(ValueRef)
+X_DECL_EXPR(ArrayRef)
 
 #include <x_macro/bin_expr.x.h>
 

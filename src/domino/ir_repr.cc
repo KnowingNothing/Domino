@@ -15,6 +15,14 @@ class IRPrinter : public IRFunctor<std::string()> {
     return fmt::format("({}+{})", Visit(mem_ref->var), Visit(mem_ref->offset));
   }
 
+  std::string ImplVisit(ValueRef value_ref) override {
+    return fmt::format("(&{})", Visit(value_ref->var));
+  }
+
+  std::string ImplVisit(ArrayRef array_ref) override {
+    return fmt::format("(&{}{})", Visit(array_ref->var), PrintNDimIndices(array_ref->args));
+  }
+
   std::string visit_bin_op(BinExpr bin, std::string op) {
     return fmt::format("({} {} {})", Visit(bin->a), op, Visit(bin->b));
   }
@@ -84,6 +92,14 @@ class IRPrinter : public IRFunctor<std::string()> {
   std::string ImplVisit(Range op) override {
     return fmt::format("range(beg={}, ext={}, step={})", Visit(op->beg), Visit(op->extent),
                        Visit(op->step));
+  }
+
+  std::string PrintNDimIndices(ExprList op) {
+    std::vector<std::string> operands;
+    for (auto v : op->value_list) {
+      operands.push_back(Visit(v));
+    }
+    return fmt::format("[{}]", fmt::join(operands, "]["));
   }
 
   std::string ImplVisit(ExprList op) override {

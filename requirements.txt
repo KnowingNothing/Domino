@@ -1,0 +1,5 @@
+numpy
+tflite
+onnx
+networkx
+pandas

@@ -8,7 +8,8 @@ from functools import reduce
 _dtype = DType.make
 
 __all__ = [
-    "Expr", "BinExpr", "UniExpr", "TerExpr", "ConstExpr", "MutableExpr", "MemRef",
+    "Expr", "BinExpr", "UniExpr", "TerExpr", "ConstExpr", "MutableExpr",
+    "MemRef", "ValueRef", "ArrayRef",
     "Add", "Sub", "Mul", "Div", "Mod", "FloorDiv", "FloorMod", "And", "Or",
     "XOr", "BitAnd", "BitOr", "BitXOr", "GT", "GE", "LT", "LE", "EQ", "NE",
     "Cast", "Broadcast", "Neg", "Not", "BitNot", "Ceil", "Floor",
@@ -285,6 +286,19 @@ class MemRef(ir.MemRef, Expr):
     def __init__(self, var: "Var", offset: Expr):
         offset = _to_expr(offset)
         ir.MemRef.__init__(self, var, offset)
+        Expr.__init__(self, _dtype("mem_ref"))
+
+
+class ValueRef(ir.ValueRef, Expr):
+    def __init__(self, var: "Var"):
+        ir.ValueRef.__init__(self, var)
+        Expr.__init__(self, _dtype("mem_ref"))
+
+
+class ArrayRef(ir.ArrayRef, Expr):
+    def __init__(self, var: "Var", args: "ExprList"):
+        args = _to_expr(args)
+        ir.ArrayRef.__init__(self, var, args)
         Expr.__init__(self, _dtype("mem_ref"))
 
 ## =-------------------------------------------------------------------=##
@@ -678,6 +692,7 @@ class MemSlice(ir.MemSlice, MemRef):
 ## =-------------------------------------------------------------------=##
 class Call(ir.Call, Expr):
     def __init__(self, dtype: DType, name: str, args: List[Union[Expr, str]]):
+        dtype = DType.make(dtype)
         new_args = [arg if isinstance(
             arg, Expr) else _to_expr(arg) for arg in args]
         ir.Call.__init__(self, dtype, name, ExprList(new_args))

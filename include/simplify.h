@@ -52,6 +52,16 @@ class ExprSimplifyPatternMatcher : public IRFunctor<bool(Expr)> {
     return Visit(op->var, as_op->var) && Visit(op->offset, as_op->offset);
   }
 
+  bool ImplVisit(ValueRef op, Expr other) override {
+    GENERAL_VISIT(ValueRef)
+    return Visit(op->var, as_op->var);
+  }
+
+  bool ImplVisit(ArrayRef op, Expr other) override {
+    GENERAL_VISIT(ArrayRef)
+    return Visit(op->var, as_op->var) && Visit(op->args, as_op->args);
+  }
+
 #define X_DECL_BIN_EXPR(OP)                                  \
   bool ImplVisit(OP op, Expr other) override {               \
     GENERAL_VISIT(OP)                                        \
@@ -211,6 +221,11 @@ class ExprSimplifyPatternMatcher : public IRFunctor<bool(Expr)> {
   bool ImplVisit(Call op, Expr other) override {
     GENERAL_VISIT(Call)
     return Visit(op->func, as_op->func) && Visit(op->args, as_op->args);
+  }
+
+  bool ImplVisit(PackValue op, Expr other) override {
+    GENERAL_VISIT(PackValue)
+    return Visit(op->value_list, as_op->value_list);
   }
 
 #undef GENERAL_VISIT

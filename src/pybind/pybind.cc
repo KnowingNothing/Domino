@@ -117,6 +117,21 @@ PYBIND11_MODULE(dominoc, m) {
       .def_readonly("var", &MemRefNode::var)
       .def_readonly("offset", &MemRefNode::offset);
 
+  /// bind value reference
+  py::class_<ValueRefNode, ValueRef> pyValueRef(ir_m, "ValueRef", pyExpr);
+  pyValueRef.def(py::init<Var>())
+      .def("__repr__", [](const ValueRefNode& d) { return std::string(d); })
+      .def("__str__", [](const ValueRefNode& d) { return std::string(d); })
+      .def_readonly("var", &ValueRefNode::var);
+
+  /// bind array reference
+  py::class_<ArrayRefNode, ArrayRef> pyArrayRef(ir_m, "ArrayRef", pyExpr);
+  pyArrayRef.def(py::init<Var, ExprList>())
+      .def("__repr__", [](const ArrayRefNode& d) { return std::string(d); })
+      .def("__str__", [](const ArrayRefNode& d) { return std::string(d); })
+      .def_readonly("var", &ArrayRefNode::var)
+      .def_readonly("args", &ArrayRefNode::args);
+
   /// bind binary IR Node
 #define X_DECL_BIN_EXPR(NAME)                                              \
   py::class_<NAME##Node, NAME>(ir_m, #NAME, pyBinExpr)                     \

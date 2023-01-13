@@ -17,6 +17,14 @@ class CodeGenBase : public IRFunctor<std::string()> {
     return fmt::format("({}+{})", Visit(mem_ref->var), Visit(mem_ref->offset));
   }
 
+  std::string ImplVisit(ValueRef value_ref) override {
+    return fmt::format("(&{})", Visit(value_ref->var));
+  }
+
+  std::string ImplVisit(ArrayRef array_ref) override {
+    return fmt::format("(&{}{})", Visit(array_ref->var), PrintNDimIndices(array_ref->args));
+  }
+
   std::string visit_bin_op(BinExpr bin, std::string op) {
     return fmt::format("({} {} {})", Visit(bin->a), op, Visit(bin->b));
   }
@@ -31,11 +39,9 @@ class CodeGenBase : public IRFunctor<std::string()> {
 
   std::string ImplVisit(Mod op) override { return this->visit_bin_op(op, "%"); }
 
-  std::string ImplVisit(FloorDiv op) override { return this->visit_bin_op(op, "//"); }
+  std::string ImplVisit(FloorDiv op) override { return this->visit_bin_op(op, "/"); }
 
-  std::string ImplVisit(FloorMod op) override {
-    return fmt::format("({} / {})", Visit(op->a), Visit(op->b));
-  }
+  // std::string ImplVisit(FloorMod op) override not implemented
 
   std::string ImplVisit(And op) override { return this->visit_bin_op(op, "&&"); }
 
@@ -91,6 +97,14 @@ class CodeGenBase : public IRFunctor<std::string()> {
     return fmt::format("{}", fmt::join(operands, ", "));
   }
 
+  std::string PrintNDimIndices(ExprList op) {
+    std::vector<std::string> operands;
+    for (auto v : op->value_list) {
+      operands.push_back(Visit(v));
+    }
+    return fmt::format("[{}]", fmt::join(operands, "]["));
+  }
+
   std::string ImplVisit(CondAll op) override {
     std::vector<std::string> operands;
     for (auto v : op->phases->value_list) {
@@ -124,7 +138,7 @@ class CodeGenBase : public IRFunctor<std::string()> {
   // std::string ImplVisit(Iterator op) override not implemented
 
   std::string ImplVisit(NdLoad op) override {
-    return fmt::format("({}[{}])", Visit(op->mem_ref), Visit(op->indices));
+    return fmt::format("({}{})", Visit(op->mem_ref), PrintNDimIndices(op->indices));
   }
 
   std::string ImplVisit(Load op) override {
@@ -148,7 +162,7 @@ class CodeGenBase : public IRFunctor<std::string()> {
 
   /// statements
   std::string ImplVisit(NdStore op) override {
-    return fmt::format("{}[{}] = {};", Visit(op->mem_ref), Visit(op->indices), Visit(op->value));
+    return fmt::format("{}{} = {};", Visit(op->mem_ref), PrintNDimIndices(op->indices), Visit(op->value));
   }
 
   std::string ImplVisit(Store op) override {
@@ -168,7 +182,8 @@ class CodeGenBase : public IRFunctor<std::string()> {
     std::string body_str = Visit(op->body);
     /// decrease indent
     decrease_indent();
-    std::string init = fmt::format("{} {}={}", std::string(op->iter->var->dtype), Visit(op->iter->var), Visit(op->iter->range->beg));
+    std::string init = fmt::format("{} {}={}", std::string(op->iter->var->dtype),
+                                   Visit(op->iter->var), Visit(op->iter->range->beg));
     std::string cond = fmt::format("{}<{}", Visit(op->iter->var), Visit(op->iter->range->extent));
     std::string step = fmt::format("{}+={}", Visit(op->iter->var), Visit(op->iter->range->step));
     std::string ind = make_indent();

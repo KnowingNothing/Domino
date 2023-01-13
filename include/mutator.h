@@ -17,6 +17,23 @@ class ExprMutator : public IRFunctor<Expr()> {
     return MemRef::make(as_var, Visit(op->offset));
   }
 
+  Expr ImplVisit(ValueRef op) override {
+    Expr var = Visit(op->var);
+    Var as_var = var.as<VarNode>();
+    ASSERT(as_var.defined());
+    return ValueRef::make(as_var);
+  }
+
+  Expr ImplVisit(ArrayRef op) override {
+    Expr var = Visit(op->var);
+    Var as_var = var.as<VarNode>();
+    ASSERT(as_var.defined());
+    Expr list = Visit(op->args);
+    ExprList as_list = list.as<ExprListNode>();
+    ASSERT(as_list.defined());
+    return ArrayRef::make(as_var, as_list);
+  }
+
 #define X_DECL_BIN_EXPR(OP) \
   Expr ImplVisit(OP op) override { return OP::make(Visit(op->a), Visit(op->b)); }
 #include <x_macro/bin_expr.x.h>

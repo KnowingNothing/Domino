@@ -60,74 +60,89 @@ def test_vector_add_dynamic_shape_c():
 
 
 def test_matmul_dynamic_shape_mcu():
-    # shape constants
-    K = 16
 
     # Quantize constants
     CLIP_MIN = 0
     CLIP_MAX = 255
 
     # optimization parameters
-    KI = 4
     NI = 2
     MI = 2
 
-    # this kernel is designed for K=16, so KO is known at compile time
-    KO = K // KI
-
-    def matmul_s8_s16_k16(ctx, A, B, C, scales, MO, NO, input_offset, output_offset):
-        vA = ctx.alloc([MI, KI//2], scope="local", dtype="int32", name="vA")
-        vB = ctx.alloc([NI, KI//2], scope="local", dtype="int32", name="vB")
-        scale = ctx.alloc([NI], scope="local", dtype="float32", name="scale")
+    def matmul_s8s8s8_acc32_mx_n4x_k16x_row_col_mma_m2n2k16_aoffset(
+            ctx, A, B, C, scales, M, N, K, input_offset, output_offset):
+        # vA = ctx.alloc([MI, KI//2], scope="local", dtype="int32", name="vA")
+        # vB = ctx.alloc([NI, KI//2], scope="local", dtype="int32", name="vB")
+        # scale = ctx.alloc([NI], scope="local", dtype="float32", name="scale")
         input_offset_s16 = ctx.map_var(
             "input_offset_s16", cast("int16", input_offset))
         pack_input_offset = ctx.map_var("pack_input_offset", pack_value(
             "int32", [input_offset_s16, input_offset_s16]))
-        with ctx.spatial_for("mo", Range(MO)) as mo:
-            with ctx.spatial_for("no", Range(NO)) as no:
-                acc = ctx.alloc([MI, NI], scope="local",
-                                dtype="int32", name="acc")
-                with ctx.unroll_for("ni", Range(NI)) as ni:
-                    scale[ni] = scales[no * NI + ni]
-                # with ctx.pipeline_for("ko", Range(KO)) as ko:
-                #     # load 4 int8 and extend to 2 int 32
-                #     # high addr <-> low addr
-                #     # [v1](8bit), [v2](8bit), [v3](8bit), [v4](8bit)
-                #     # -> [[v2](16bit), [v4](16bit)](32bit), [[v1](16bit), [v3](16bit)](32bit)
-                #     ctx.load_s8x4_s32x2_ext(vA[0, :], A[mo * MI, ko * KI:KI])
-                #     ctx.s16_vadd_s32x2_s32_s32x2(vA[0, :], vA[0, :], pack_input_offset)
-                #     ctx.pipeline_slot()
-                #     ctx.load_s8x4_s32x2_ext(vB[0, :], B[no * NI, ko * KI:KI])
-                #     ctx.s16_dot_s32x2_s32x2_s32(vA[0, :], vB[0, :], acc[0, 0])
-                #     ctx.load_s8x4_s32x2_ext(vA[1, :], A[mo * MI + 1, ko * KI:KI])
-                #     ctx.s16_vadd_s32x2_s32_s32x2(vA[1, :], vA[1, :], pack_input_offset)
-                #     ctx.s16_dot_s32x2_s32x2_s32(vA[1, :], vB[0, :], acc[1, 0])
-                #     ctx.load_s8x4_s32x2_ext(vB[1, :], B[mo * MI + 1, ko * KI:KI])
-                #     ctx.s16_dot_s32x2_s32x2_s32(vA[0, :], vB[1, :], acc[0, 1])
-                #     ctx.pipeline_slot()
-                #     ctx.s16_dot_s32x2_s32x2_s32(vA[1, :], vB[1, :], acc[1, 1])
-                # with ctx.unroll_for("mi", Range(MI)) as mi:
-                #     with ctx.unroll_for("ni", Range(NI)) as ni:
-                #         min_value = make_const(CLIP_MIN, acc.dtype)
-                #         max_value = make_const(CLIP_MAX, acc.dtype)
-                #         value = cast(acc.dtype, (cast("float32", acc[mi, ni]) * scale[ni])) + cast(acc.dtype, output_offset)
-                #         C[mo * MI + mi, no * NI + ni] = ctx.clip(C.dtype, value, min=min_value, max=max_value)
+        MO = ctx.map_var("MO", M//2)
+        NO = ctx.map_var("NO", N//4)
+        KO = ctx.map_var("KO", K//16)
+        with ctx.spatial_for("no", Range(NO)) as no:
+            scale0 = ctx.map_var("scale0", scales[no])
+            scale1 = ctx.map_var("scale1", scales[no + 1])
+            scale2 = ctx.map_var("scale1", scales[no + 2])
+            scale3 = ctx.map_var("scale1", scales[no + 3])
+            with ctx.spatial_for("mo", Range(MO)) as mo:
+                acc00 = ctx.map_var("acc00", make_const(0, "int32"))
+                acc01 = ctx.map_var("acc01", make_const(0, "int32"))
+                acc02 = ctx.map_var("acc02", make_const(0, "int32"))
+                acc03 = ctx.map_var("acc03", make_const(0, "int32"))
+                acc10 = ctx.map_var("acc10", make_const(0, "int32"))
+                acc11 = ctx.map_var("acc11", make_const(0, "int32"))
+                acc12 = ctx.map_var("acc12", make_const(0, "int32"))
+                acc13 = ctx.map_var("acc13", make_const(0, "int32"))
+                with ctx.reduce_for("ko", Range(KO)) as ko:
+                    ctx.call("ignore", "mma_m2n2k16_s8s8s8_acc32_aoffset", (
+                        MemRef(A.var, mo * 2 * K + ko *
+                               16), MemRef(B.var, no * 4 * K + ko * 16),
+                        MemRef(A.var, (mo + 1) * 2 * K + ko *
+                               16), MemRef(B.var, (no + 1) * 4 * K + ko * 16),
+                        pack_input_offset, acc00, acc01, acc10, acc11
+                    ))
+                    ctx.call("ignore", "mma_m2n2k16_s8s8s8_acc32_aoffset", (
+                        MemRef(A.var, mo * 2 * K + ko *
+                               16), MemRef(B.var, (no + 2) * 4 * K + ko * 16),
+                        MemRef(A.var, (mo + 1) * 2 * K + ko *
+                               16), MemRef(B.var, (no + 3) * 4 * K + ko * 16),
+                        pack_input_offset, acc02, acc03, acc12, acc13
+                    ))
+                C[(mo * 2) * N + no * 4] = cast("int8", cast("int32",
+                                         (cast("float", acc00) * scale0)) + output_offset)
+                C[(mo * 2) * N + no * 4 + 1] = cast("int8", cast("int32",
+                                             (cast("float", acc01) * scale1)) + output_offset)
+                C[(mo * 2) * N + no * 4 + 2] = cast("int8", cast("int32",
+                                             (cast("float", acc02) * scale2)) + output_offset)
+                C[(mo * 2) * N + no * 4 + 3] = cast("int8", cast("int32",
+                                             (cast("float", acc03) * scale3)) + output_offset)
+                C[(mo * 2 + 1) * N + no * 4] = cast("int8", cast("int32",
+                                             (cast("float", acc10) * scale0)) + output_offset)
+                C[(mo * 2 + 1) * N + no * 4 + 1] = cast("int8", cast(
+                    "int32", (cast("float", acc11) * scale1)) + output_offset)
+                C[(mo * 2 + 1) * N + no * 4 + 2] = cast("int8", cast(
+                    "int32", (cast("float", acc12) * scale2)) + output_offset)
+                C[(mo * 2 + 1) * N + no * 4 + 3] = cast("int8", cast(
+                    "int32", (cast("float", acc13) * scale3)) + output_offset)
 
     input_offset = Var("int32", "input_offset")
     output_offset = Var("int32", "output_offset")
-    MO = Var("int32", "MO")
-    NO = Var("int32", "NO")
-    A = Tensor([MO*MI, K], name="A", dtype="int8")
-    B = Tensor([NO*NI, K], name="B", dtype="int8")
-    C = Tensor([MO*MI, NO*NI], name="C", dtype="int8")
-    scales = Tensor([NO*NI], name="scales", dtype="float32")
+    M = Var("int32", "M")
+    N = Var("int32", "N")
+    K = Var("int32", "K")
+    A = Tensor([M, K], name="A", dtype="int8")
+    B = Tensor([N, K], name="B", dtype="int8")
+    C = Tensor([M, N], name="C", dtype="int8")
+    scales = Tensor([N], name="scales", dtype="float32")
 
-    kernel = program_lower(matmul_s8_s16_k16, [A, B, C, scales], scalar_inputs=[
-                           MO, NO, input_offset, output_offset])
+    kernel = program_lower(matmul_s8s8s8_acc32_mx_n4x_k16x_row_col_mma_m2n2k16_aoffset, [A, B, C, scales], scalar_inputs=[
+                           M, N, K, input_offset, output_offset])
     print_ir(kernel.body)
 
-    kernel = program_build(matmul_s8_s16_k16, [A, B, C, scales], scalar_inputs=[
-                           MO, NO, input_offset, output_offset], target="arm_m")
+    kernel = program_build(matmul_s8s8s8_acc32_mx_n4x_k16x_row_col_mma_m2n2k16_aoffset, [A, B, C, scales], scalar_inputs=[
+                           M, N, K, input_offset, output_offset], target="arm_m")
     print(kernel.source)
     print(kernel.gen_function())
 
