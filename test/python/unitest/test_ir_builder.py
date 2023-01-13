@@ -134,6 +134,40 @@ def test_matmul_dynamic_shape_mcu():
     print(kernel.gen_function())
 
 
+def test_gen_matmul_golden():
+
+    def matmul_s8s8s8_acc32_aoffset_golden(
+            ctx, A, B, C, scales, M, N, K, input_offset, output_offset, clip_min, clip_max):
+
+        with ctx.spatial_for("m", Range(M)) as m:
+            with ctx.spatial_for("n", Range(N)) as n:
+                acc = ctx.alloc([1], scope="local", dtype="int32", name="acc")
+                with ctx.reduce_for("k", Range(K)) as k:
+                    acc[0] = acc[0] + (cast("int32", A[m * M + k]) +
+                                       cast("int32", input_offset)) * cast("int32", B[n * N + k])
+                acc[0] = cast("int32", cast("float32", acc[0])
+                              * scales[n]) + output_offset
+                acc[0] = clip(acc[0], clip_min, clip_max)
+                C[m * N + n] = cast("int8", acc[0])
+
+    input_offset = Var("int32", "input_offset")
+    output_offset = Var("int32", "output_offset")
+    clip_max = Var("int32", "clip_max")
+    clip_min = Var("int32", "clip_min")
+    M = Var("int32", "M")
+    N = Var("int32", "N")
+    K = Var("int32", "K")
+    A = Tensor([M, K], name="A", dtype="int8")
+    B = Tensor([N, K], name="B", dtype="int8")
+    C = Tensor([M, N], name="C", dtype="int8")
+    scales = Tensor([N], name="scales", dtype="float32")
+
+    kernel = program_build(matmul_s8s8s8_acc32_aoffset_golden, [A, B, C, scales], scalar_inputs=[
+                           M, N, K, input_offset, output_offset, clip_min, clip_max], target="arm_m")
+
+    print(kernel.gen_function())
+
+
 def test_matmul_gpu():
 
     def index_helper(indices, strides):
@@ -212,4 +246,5 @@ def test_matmul_gpu():
 
 if __name__ == "__main__":
     # test_vector_add_dynamic_shape_c()
-    test_matmul_dynamic_shape_mcu()
+    # test_matmul_dynamic_shape_mcu()
+    test_gen_matmul_golden()

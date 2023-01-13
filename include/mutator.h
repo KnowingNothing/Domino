@@ -90,6 +90,18 @@ class ExprMutator : public IRFunctor<Expr()> {
     return Var::make(op->dtype, as_id);
   }
 
+  Expr ImplVisit(ConstInt op) override { return op; }
+
+  Expr ImplVisit(ConstUInt op) override { return op; }
+
+  Expr ImplVisit(ConstFloat op) override { return op; }
+
+  Expr ImplVisit(ConstBFloat op) override { return op; }
+
+  Expr ImplVisit(ConstTFloat op) override { return op; }
+
+  Expr ImplVisit(ConstString op) override { return ConstString::make(op->value); }
+
   Expr ImplVisit(Iterator op) override {
     Expr var = Visit(op->var);
     Var as_var = var.as<VarNode>();

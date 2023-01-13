@@ -466,9 +466,6 @@ def program_build(func, tensor_inputs=None, scalar_inputs=None, ctx=None, target
         assert ctx is not None and isinstance(ctx, IRBuilderContext)
         kernel = func
 
-    for k, v in ctx.array_map.items():
-        print(k, v)
-
     if target == "c":
         code = codegen_c(kernel.body)
     elif target == "arm_m":
