@@ -15,15 +15,15 @@ namespace domino {
 
 using namespace domino::arch;
 
-template <typename F>
+template <typename F, bool Cache = true>
 class IRFunctor;
-template <typename R, typename... Args>
-class IRFunctor<R(Args...)> : public GeneralFunctor<IRFunctor<R(Args...)>, IRBaseNode,
+template <typename R, typename... Args, bool Cache>
+class IRFunctor<R(Args...), Cache> : public GeneralFunctor<IRFunctor<R(Args...), Cache>, IRBaseNode,
                                                     std::tuple<void
 #define X_DECL_IR(X) , X##Node
 #include <x_macro/ir.x.h>
                                                                >,
-                                                    R(Args...)> {
+                                                    R(Args...), Cache> {
  public:
 #define X_DECL_IR(X) \
   virtual R ImplVisit(X, Args...) { throw std::runtime_error("not implemented"); }

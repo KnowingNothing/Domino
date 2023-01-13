@@ -38,14 +38,15 @@ class default_pointer {
 
 }  // namespace detail
 
-template <typename Visitor, typename Base, typename Deriveds, typename Func,
+template <typename Visitor, typename Base, typename Deriveds, typename Func, bool Cache,
           typename = detail::default_pointer<Base>,
           template <typename, typename> typename = detail::default_vtable>
 class GeneralFunctor;
 
-template <typename Visitor, typename Base, typename... Deriveds, typename Pointer,
+template <typename Visitor, typename Base, typename... Deriveds, typename Pointer, bool Cache,
           template <typename, typename> typename Vtable, typename R, typename... Args>
-class GeneralFunctor<Visitor, Base, std::tuple<void, Deriveds...>, R(Args...), Pointer, Vtable> {
+class GeneralFunctor<Visitor, Base, std::tuple<void, Deriveds...>, R(Args...), Cache, Pointer,
+                     Vtable> {
   using BasePtr = typename Pointer::type;
   using FuncType = R (*)(Visitor*, BasePtr, Args...);
   using VtableType = Vtable<BasePtr, FuncType>;
@@ -53,13 +54,17 @@ class GeneralFunctor<Visitor, Base, std::tuple<void, Deriveds...>, R(Args...), P
  public:
   virtual R Visit(BasePtr base, Args... args) {
     static VtableType vtable = BuildVtable();
-    auto it = cache_.find(base);
-    if (it != cache_.end()) {
-      return it->second(static_cast<Visitor*>(this), base, std::forward<Args>(args)...);
+    if constexpr (Cache && sizeof...(Args) == 0) {
+      auto it = ret_cache_.find(base);
+      if (it != ret_cache_.end()) {
+        return it->second;
+      } else {
+        auto ret = vtable.Get(base)(static_cast<Visitor*>(this), base, std::forward<Args>(args)...);
+        ret_cache_[base] = ret;
+        return ret;
+      }
     } else {
-      auto func = vtable.Get(base);
-      cache_[base] = func;
-      return func(static_cast<Visitor*>(this), base, std::forward<Args>(args)...);
+      return vtable.Get(base)(static_cast<Visitor*>(this), base, std::forward<Args>(args)...);
     }
   }
 
@@ -84,7 +89,7 @@ class GeneralFunctor<Visitor, Base, std::tuple<void, Deriveds...>, R(Args...), P
     return vtable;
   }
 
-  std::unordered_map<IRBase, FuncType> cache_;
+  std::unordered_map<IRBase, R> ret_cache_;
 };
 
 template <typename... Functors>
