@@ -162,7 +162,7 @@ class CodeGenBase : public IRFunctor<std::string()> {
   }
 
   std::string ImplVisit(MapVar op) override {
-    return fmt::format("({} {} = {})", std::string(op->var->dtype), Visit(op->var),
+    return fmt::format("{} {} = {}", std::string(op->var->dtype), Visit(op->var),
                        Visit(op->expr));
   }
 

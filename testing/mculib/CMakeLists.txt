@@ -8,7 +8,8 @@ set(MBED_CONFIG_PATH ${CMAKE_CURRENT_BINARY_DIR} CACHE INTERNAL "")
 set(APP_TARGET mculib)
 
 # set(MAIN_SOURCE main.cpp)
-set(MAIN_SOURCE ./test/test_matmul.cpp)
+# set(MAIN_SOURCE ./test/cpp/test_matmul.cpp)
+set(MAIN_SOURCE ./test/python/tmp.cpp)
 
 include(${MBED_PATH}/tools/cmake/app.cmake)
 

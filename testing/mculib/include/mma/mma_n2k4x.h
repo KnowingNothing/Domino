@@ -103,16 +103,16 @@ namespace mculib {
   a12 = __SADD16(a12, offset_q15x2); \
   a11 = __SADD16(a11, offset_q15x2); \
                                      \
-  acc01 = __SMLAD(a01, b11, acc01);  \
-  acc01 = __SMLAD(a02, b12, acc01);  \
+  acc10 = __SMLAD(a11, b01, acc10);  \
+  acc10 = __SMLAD(a12, b02, acc10);  \
                                      \
   LOADs8x4(b11, ptr_B1);             \
   ptr_B1 += 4;                       \
-  a12 = __SXTB16(__ROR(b11, 8));     \
-  a11 = __SXTB16(b11);               \
+  b12 = __SXTB16(__ROR(b11, 8));     \
+  b11 = __SXTB16(b11);               \
                                      \
-  acc10 = __SMLAD(a11, b01, acc10);  \
-  acc10 = __SMLAD(a12, b02, acc10);
+  acc01 = __SMLAD(a01, b11, acc01);  \
+  acc01 = __SMLAD(a02, b12, acc01);
 
 inline void mma_m1n2k8_s8s8s8_acc32_boffset(int8_t* ptr_A0, int8_t* ptr_B0, int8_t* ptr_B1,
                                             int32_t offset_q15x2, int32_t& acc00, int32_t& acc01) {
@@ -276,16 +276,16 @@ inline void mma_m2n2k16_s8s8s8_acc32_aoffset(int8_t* ptr_A0, const int8_t* ptr_B
   a12 = __SADD16(a12, offset_q15x2);
   a11 = __SADD16(a11, offset_q15x2);
 
-  acc01 = __SMLAD(a01, b11, acc01);
-  acc01 = __SMLAD(a02, b12, acc01);
+  acc10 = __SMLAD(a11, b01, acc10);
+  acc10 = __SMLAD(a12, b02, acc10);
 
   LOADs8x4(b11, ptr_B1);
   ptr_B1 += 4;
   b12 = __SXTB16(__ROR(b11, 8));
   b11 = __SXTB16(b11);
 
-  acc10 = __SMLAD(a11, b01, acc10);
-  acc10 = __SMLAD(a12, b02, acc10);
+  acc01 = __SMLAD(a01, b11, acc01);
+  acc01 = __SMLAD(a02, b12, acc01);
 
   // prefetch
   MMA_M2N2K4_ROUND_AOFFSET

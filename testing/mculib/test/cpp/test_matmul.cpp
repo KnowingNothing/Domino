@@ -7,7 +7,7 @@
 
 using namespace mculib;
 
-#define VLEN 4
+
 // #define DEBUG 1
 
 Timer t;

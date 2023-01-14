@@ -1,2 +1,3 @@
 .mbedbuild
 cmake_build/
+tmp.*
