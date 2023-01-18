@@ -23,7 +23,7 @@ def gen_test_file(kernel_to_test, kernel_golden, input_tensors, input_vars, conc
     right = "}"
     endl = "\\n"
 
-    assert len(input_vars) == len(concrete_vars)
+    assert len(input_vars) == len(concrete_vars), f"{len(input_vars)} vs {len(concrete_vars)}"
     define_vars = [f"const {input_vars[i].dtype} {input_vars[i].id.value} = {concrete_vars[i]};\n" for i in range(len(input_vars))]
     define_vars_str = "".join(define_vars)
 

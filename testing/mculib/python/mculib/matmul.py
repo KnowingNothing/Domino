@@ -6,7 +6,7 @@ def gen_matmul():
     NI = 4
     KI = 16
 
-    def matmul_s8s8s8_acc32_mx_n4x_k16x_row_col_mma_m2n2k16_aoffset(
+    def matmul_s8s8s8_acc32_m2x_n4x_k16x_row_col_mma_m2n2k16_aoffset(
             ctx, A, B, C, scales, M, N, K, input_offset, output_offset, clip_min, clip_max):
 
         input_offset_s16 = ctx.map_var(
@@ -65,7 +65,7 @@ def gen_matmul():
     C = Tensor([M, N], name="C", dtype="int8")
     scales = Tensor([N], name="scales", dtype="float32")
 
-    kernel = program_build(matmul_s8s8s8_acc32_mx_n4x_k16x_row_col_mma_m2n2k16_aoffset, [A, B, C, scales], scalar_inputs=[
+    kernel = program_build(matmul_s8s8s8_acc32_m2x_n4x_k16x_row_col_mma_m2n2k16_aoffset, [A, B, C, scales], scalar_inputs=[
                            M, N, K, input_offset, output_offset, clip_min, clip_max], target="arm_m")
 
     return kernel, [A, B, C, scales], [M, N, K, input_offset, output_offset, clip_min, clip_max]

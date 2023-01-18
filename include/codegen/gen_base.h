@@ -267,7 +267,7 @@ class CodeGenBase : public IRFunctor<std::string()> {
     std::string left = "{";
     std::string right = "}";
     return fmt::format("{}{} {}[{}] = {}0{};\n{}", ind, std::string(op->var->dtype), Visit(op->var),
-                       fmt::join(shape, ", "), left, right, body_str);
+                       fmt::join(shape, "]["), left, right, body_str);
   }
 
   std::string ImplVisit(AllocBlock op) override {
