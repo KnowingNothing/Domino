@@ -20,6 +20,16 @@ The environment for Python3
 ```sh
 source setup-env.sh
 ```
+or
+```sh
+cd python
+python -m pip install -e .
+```
+or
+```sh
+cd python
+python setup.py install --user
+```
 
 ## Python part dependencies
 
