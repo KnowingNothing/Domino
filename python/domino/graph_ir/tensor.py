@@ -49,10 +49,7 @@ class Tensor(IRBase):
 
     @property
     def shape_dict(self):
-        ret = {}
-        for s, l in zip(self.shape, self.layout):
-            ret[l] = s
-        return ret
+        return {l: s for s, l in zip(self.shape, self.layout)}
 
     def __str__(self) -> str:
         return f"Tensor({self.ttype}, {self.name}, {self.layout}, {hex(id(self.produce_op))})"
