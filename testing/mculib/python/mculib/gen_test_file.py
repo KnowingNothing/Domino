@@ -1,4 +1,8 @@
 from domino.program_ir import *
+from domino.type_system.dtype import DType
+import random
+from functools import reduce
+
 
 def gen_mculib_header():
     return """
@@ -6,6 +10,7 @@ def gen_mculib_header():
 #include <matmul/matmul_mma_m2n4k16.h>
 
 #include <cstdlib>
+#include <cmath>
 
 #include "mbed.h"
 
@@ -17,15 +22,33 @@ typedef int32_t int32;
 typedef float float32;
 """
 
+
+def generate_random_value(length, dtype):
+    dtype = DType.make(dtype)
+    if dtype.is_int() or dtype.is_uint():
+        min_v = dtype.min_limit()
+        max_v = dtype.max_limit()
+        return [random.randint(min_v, max_v) for i in range(length)]
+    elif dtype.is_float():
+        return [random.random() for i in range(length)]
+    else:
+        raise RuntimeError(
+            f"Currently don't support random generation for {dtype}")
+
+
 def gen_test_file(kernel_to_test, kernel_golden, input_tensors, input_vars, concrete_vars):
     header = gen_mculib_header()
     left = "{"
     right = "}"
     endl = "\\n"
 
-    assert len(input_vars) == len(concrete_vars), f"{len(input_vars)} vs {len(concrete_vars)}"
-    define_vars = [f"const {input_vars[i].dtype} {input_vars[i].id.value} = {concrete_vars[i]};\n" for i in range(len(input_vars))]
+    assert len(input_vars) == len(
+        concrete_vars), f"{len(input_vars)} vs {len(concrete_vars)}"
+    define_vars = [
+        f"const {input_vars[i].dtype} {input_vars[i].id.value} = {concrete_vars[i]};\n" for i in range(len(input_vars))]
     define_vars_str = "".join(define_vars)
+
+    sub_map = {v: value for v, value in zip(input_vars, concrete_vars)}
 
     call_args = [
         f"&{t.name}[0]" for t in input_tensors
@@ -43,12 +66,32 @@ def gen_test_file(kernel_to_test, kernel_golden, input_tensors, input_vars, conc
 
     lengths = []
     for tensor in input_tensors:
-        tmp = []
+        # tmp = []
+        length = 1
         for s in tensor.shape:
-            tmp.append(print_ir(s, print_out=False))
-        lengths.append("*".join(tmp))
-    define_arrays = [f"{t.dtype} {t.name}[{length}] = " + "{0};\n" for t, length in zip(input_tensors, lengths)]
-    define_debug_arrays = [f"{t.dtype} {t.name}_debug[{length}] = " + "{0};\n" for t, length in zip(input_tensors, lengths)]
+            new_s = simplify_expr(substitute_expr(s, sub_map))
+            assert new_s.is_const()
+            length *= new_s.value
+            # tmp.append(print_ir(substitute_expr(s, sub_map), print_out=False))
+        # lengths.append("*".join(tmp))
+        # lengths.append(reduce(lambda a, b: a * b, tmp, 1))
+        lengths.append(length)
+
+    define_arrays = []
+    define_debug_arrays = []
+    for t, length in zip(input_tensors, lengths):
+        if t.is_const():
+            init_values = generate_random_value(length, t.dtype)
+            init_values = ",".join(map(str, init_values))
+            define_arrays.append(
+                f"const {t.dtype} {t.name}[{length}] = " + "{" + f"{init_values}" + "};\n")
+            define_debug_arrays.append(
+                f"const {t.dtype} {t.name}_debug[{length}] = " + "{" + f"{init_values}" + "};\n")
+        else:
+            define_arrays.append(f"{t.dtype} {t.name}[{length}] = " + "{0};\n")
+            define_debug_arrays.append(
+                f"{t.dtype} {t.name}_debug[{length}] = " + "{0};\n")
+
     init_arrays = [
         f"""
 for (int _i = 0; _i < {length}; ++_i) {left}
@@ -58,7 +101,7 @@ for (int _i = 0; _i < {length}; ++_i) {left}
 #endif
 {right}\n
 """
-    for t, length in zip(input_tensors, lengths)]
+        if not t.is_const() else "" for t, length in zip(input_tensors, lengths)]
 
     check_arrays = [
         f"""
@@ -67,10 +110,8 @@ for (int _i = 0; _i < {length}; ++_i) {left}
         _errors += 1;
 {right}\n
 """
-    for t, length in zip(input_tensors, lengths)]
-    
-    
-    
+        if not t.is_const() else "" for t, length in zip(input_tensors, lengths)]
+
     return f"""
 {header}
 
@@ -102,7 +143,12 @@ printf("The time taken was %llu milliseconds{endl}",
          std::chrono::duration_cast<std::chrono::milliseconds>(_t.elapsed_time()).count());
 
 #ifdef DEBUG
+_t.start();
 {kernel_golden.signature.kernel_name}({debug_call_args_str});
+_t.stop();
+
+printf("The golden time taken was %llu milliseconds{endl}",
+         std::chrono::duration_cast<std::chrono::milliseconds>(_t.elapsed_time()).count());
 
 int _errors = 0;
 {"".join(check_arrays)}

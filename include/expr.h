@@ -695,6 +695,8 @@ class ConstIntNode : public ConstExprNode {
   ConstIntNode(long long int value, int bits = 32, int lane = 1)
       : ConstExprNode(DType(DTypeKind::kInt, bits, lane)), value(value) {}
 
+  ConstIntNode(long long int value, DType dtype) : ConstExprNode(dtype), value(value) {}
+
   operator std::string() const override {
     return fmt::format("Const({}, {})", this->value, std::string(this->dtype));
   }
@@ -709,6 +711,8 @@ class ConstUIntNode : public ConstExprNode {
   ConstUIntNode(unsigned long long int value, int bits = 32, int lane = 1)
       : ConstExprNode(DType(DTypeKind::kUInt, bits, lane)), value(value) {}
 
+  ConstUIntNode(unsigned long long int value, DType dtype) : ConstExprNode(dtype), value(value) {}
+
   operator std::string() const override {
     return fmt::format("Const({}, {})", this->value, std::string(this->dtype));
   }
@@ -721,6 +725,8 @@ class ConstFloatNode : public ConstExprNode {
  public:
   ConstFloatNode(double value, int bits = 32, int lane = 1)
       : ConstExprNode(DType(DTypeKind::kFloat, bits, lane)), value(value) {}
+
+  ConstFloatNode(double value, DType dtype) : ConstExprNode(dtype), value(value) {}
 
   operator std::string() const override {
     return fmt::format("Const({}, {})", this->value, std::string(this->dtype));
@@ -735,6 +741,8 @@ class ConstBFloatNode : public ConstExprNode {
   ConstBFloatNode(double value, int bits = 16, int lane = 1)
       : ConstExprNode(DType(DTypeKind::kBFloat, bits, lane)), value(value) {}
 
+  ConstBFloatNode(double value, DType dtype) : ConstExprNode(dtype), value(value) {}
+
   operator std::string() const override {
     return fmt::format("Const({}, {})", this->value, std::string(this->dtype));
   }
@@ -748,6 +756,8 @@ class ConstTFloatNode : public ConstExprNode {
   ConstTFloatNode(double value, int bits = 32, int lane = 1)
       : ConstExprNode(DType(DTypeKind::kTFloat, bits, lane)), value(value) {}
 
+  ConstTFloatNode(double value, DType dtype) : ConstExprNode(dtype), value(value) {}
+
   operator std::string() const override {
     return fmt::format("Const({}, {})", this->value, std::string(this->dtype));
   }
@@ -759,9 +769,7 @@ using ConstTFloat = Ref<ConstTFloatNode>;
 class ConstStringNode : public ConstExprNode {
  public:
   ConstStringNode(std::string value) : ConstExprNode(DType::make("string")), value(value) {}
-  operator std::string() const override {
-    return fmt::format("Const({}, {})", this->value, std::string(this->dtype));
-  }
+  operator std::string() const override { return fmt::format("{}", this->value); }
   std::string value;
 };
 
@@ -787,6 +795,20 @@ class VarNode : public MutableExprNode {
 };
 
 using Var = Ref<VarNode>;
+
+class ConstVarNode : public VarNode {
+ public:
+  ConstVarNode(DType dtype, ConstString id) : VarNode(dtype, id) {}
+  ConstVarNode(DType dtype, std::string id) : VarNode(dtype, id) {}
+
+  operator std::string() const override {
+    return fmt::format("ConstVar({}, {})", std::string(this->id), std::string(this->dtype));
+  }
+
+  bool IsConst() const override { return true; }
+};
+
+using ConstVar = Ref<ConstVarNode>;
 
 ///=----------------------------------------------------------------------------=///
 ///
@@ -999,6 +1021,7 @@ ConstFloat const_float(double value, int bits = 32, int lanes = 1);
 ConstString const_string(std::string value);
 
 Var var(const std::string dtype, const std::string& name = "");
+ConstVar const_var(const std::string dtype, const std::string& name = "");
 
 }  // namespace domino
 

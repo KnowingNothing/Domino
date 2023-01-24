@@ -136,6 +136,8 @@ class IRPrinter : public IRFunctor<std::string()> {
 
   std::string ImplVisit(Var op) override { return fmt::format("{}", Visit(op->id)); }
 
+  std::string ImplVisit(ConstVar op) override { return fmt::format("{}", Visit(op->id)); }
+
   std::string ImplVisit(Iterator op) override {
     return fmt::format("iter_var({}, {}, {})", Visit(op->var), Visit(op->range),
                        iter_type_to_string(op->iter_type));

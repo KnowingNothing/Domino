@@ -37,6 +37,7 @@ class ExprMutator : public IRFunctor<Expr()> {
 #define X_DECL_BIN_EXPR(OP) \
   Expr ImplVisit(OP op) override { return OP::make(Visit(op->a), Visit(op->b)); }
 #include <x_macro/bin_expr.x.h>
+#undef X_DECL_BIN_EXPR
 
   Expr ImplVisit(Cast op) override { return Cast::make(op->dtype, Visit(op->a)); }
 
@@ -88,6 +89,13 @@ class ExprMutator : public IRFunctor<Expr()> {
     ConstString as_id = id.as<ConstStringNode>();
     ASSERT(as_id.defined());
     return Var::make(op->dtype, as_id);
+  }
+
+  Expr ImplVisit(ConstVar op) override {
+    Expr id = Visit(op->id);
+    ConstString as_id = id.as<ConstStringNode>();
+    ASSERT(as_id.defined());
+    return ConstVar::make(op->dtype, as_id);
   }
 
   Expr ImplVisit(ConstInt op) override { return op; }

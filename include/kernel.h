@@ -58,10 +58,18 @@ class KernelNode : public IRBaseNode {
   std::string genSignature() const {
     std::vector<std::string> args;
     for (auto arg : this->signature->kernel_args) {
-      args.push_back(fmt::format("{}* {}", std::string(arg->dtype), arg->id->value));
+      if (!arg->IsConst()) {
+        args.push_back(fmt::format("{}* {}", std::string(arg->dtype), arg->id->value));
+      } else {
+        args.push_back(fmt::format("const {}* {}", std::string(arg->dtype), arg->id->value));
+      }
     }
     for (auto arg : this->signature->scalar_args) {
-      args.push_back(fmt::format("{} {}", std::string(arg->dtype), arg->id->value));
+      if (!arg->IsConst()) {
+        args.push_back(fmt::format("{} {}", std::string(arg->dtype), arg->id->value));
+      } else {
+        args.push_back(fmt::format("const {} {}", std::string(arg->dtype), arg->id->value));
+      }
     }
     return fmt::format("void {}({})", this->signature->kernel_name, fmt::join(args, ", "));
   }

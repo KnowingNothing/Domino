@@ -151,6 +151,8 @@ class CodeGenBase : public IRFunctor<std::string()> {
 
   std::string ImplVisit(Var op) override { return fmt::format("{}", Visit(op->id)); }
 
+  std::string ImplVisit(ConstVar op) override { return fmt::format("{}", Visit(op->id)); }
+
   // std::string ImplVisit(Iterator op) override not implemented
 
   std::string ImplVisit(NdLoad op) override {

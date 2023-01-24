@@ -17,7 +17,7 @@ __all__ = [
     "Range", "ExprList",
     "CondAll", "CondAny",
     "ConstInt", "ConstUInt", "ConstFloat", "ConstBFloat", "ConstTFloat", "ConstString", "make_const",
-    "Var", "IterTypeKind", "Iterator", "NdLoad", "Load", "MapVar", "Slice", "MemSlice", "Call",
+    "Var", "ConstVar", "IterTypeKind", "Iterator", "NdLoad", "Load", "MapVar", "Slice", "MemSlice", "Call",
     "PackValue",
     "_to_expr", "cast", "pack_value", "clip"
 ]
@@ -614,6 +614,14 @@ class Var(ir.Var, MutableExpr):
             name = name.value
         ir.Var.__init__(self, DType.make(dtype), name)
         MutableExpr.__init__(self, self.dtype)
+
+
+class ConstVar(ir.ConstVar, Var):
+    def __init__(self, dtype: Union[DType, str], name: str = ""):
+        if isinstance(name, ConstString):
+            name = name.value
+        ir.ConstVar.__init__(self, DType.make(dtype), name)
+        Var.__init__(self, DType.make(dtype), name)
 
 
 ## =-------------------------------------------------------------------=##
