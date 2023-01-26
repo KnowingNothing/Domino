@@ -23,7 +23,7 @@ source setup-env.sh
 or
 ```sh
 cd python
-python -m pip install -e .
+python setup.py develop --no-deps
 ```
 or
 ```sh
