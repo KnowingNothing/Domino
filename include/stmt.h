@@ -30,6 +30,7 @@ class NdStoreNode : public StmtNode {
     ASSERT(this->mem_ref.defined());
     ASSERT(this->indices.defined());
     ASSERT(this->value.defined());
+    ASSERT(!this->mem_ref->var->IsConst()) << "Can't store to const pointer!";
   }
 
   operator std::string() const {
@@ -51,6 +52,7 @@ class StoreNode : public StmtNode {
     ASSERT(this->mem_ref.defined());
     ASSERT(this->addr.defined());
     ASSERT(this->value.defined());
+    ASSERT(!this->mem_ref->var->IsConst()) << "Can't store to const pointer!";
   }
 
   operator std::string() const {

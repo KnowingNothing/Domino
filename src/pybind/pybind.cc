@@ -251,6 +251,12 @@ PYBIND11_MODULE(dominoc, m) {
       .def("__str__", [](const VarNode& d) { return std::string(d); })
       .def_readonly("id", &VarNode::id);
 
+  py::class_<ConstVarNode, ConstVar>(ir_m, "ConstVar", pyVar)
+      .def(py::init<DType, std::string>())
+      .def("__repr__", [](const ConstVarNode& d) { return std::string(d); })
+      .def("__str__", [](const ConstVarNode& d) { return std::string(d); })
+      .def_readonly("id", &ConstVarNode::id);
+
   /// bind iterator IR Node
   py::enum_<IterTypeKind>(ir_m, "IterTypeKind")
       .value("Spatial", IterTypeKind::kSpatial)

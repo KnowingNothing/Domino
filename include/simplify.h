@@ -177,6 +177,11 @@ class ExprSimplifyPatternMatcher : public IRFunctor<bool(Expr)> {
     return true;
   }
 
+  bool ImplVisit(ConstVar op, Expr other) override {
+    GENERAL_VISIT(ConstVar)
+    return Visit(op->id, as_op->id);
+  }
+
   bool ImplVisit(Iterator op, Expr other) override {
     GENERAL_VISIT(Iterator)
     return Visit(op->var, as_op->var) && Visit(op->range, as_op->range) &&
@@ -331,6 +336,112 @@ class ExprSimplifier : public ExprMutator {
       }
     }
     return to_simplify;
+  }
+
+  Expr ImplVisit(Add op) override {
+    Expr new_a = Visit(op->a);
+    Expr new_b = Visit(op->b);
+    if (new_a->IsConst() && new_b->IsConst()) {
+      if (op->dtype.is_int()) {
+        ASSERT(new_a.as<ConstIntNode>().defined() && new_b.as<ConstIntNode>().defined());
+        long long int new_value = new_a.as<ConstIntNode>()->value + new_b.as<ConstIntNode>()->value;
+        return ConstInt::make(new_value, op->dtype);
+      } else if (op->dtype.is_uint()) {
+        ASSERT(new_a.as<ConstUIntNode>().defined() && new_b.as<ConstUIntNode>().defined());
+        unsigned long long int new_value =
+            new_a.as<ConstUIntNode>()->value + new_b.as<ConstUIntNode>()->value;
+        return ConstUInt::make(new_value, op->dtype);
+      } else if (op->dtype.is_float()) {
+        ASSERT(new_a.as<ConstFloatNode>().defined() && new_b.as<ConstFloatNode>().defined());
+        double new_value = new_a.as<ConstFloatNode>()->value + new_b.as<ConstFloatNode>()->value;
+        return ConstFloat::make(new_value, op->dtype);
+      }
+    }
+    return Add::make(Visit(op->a), Visit(op->b));
+  }
+
+  Expr ImplVisit(Sub op) override {
+    Expr new_a = Visit(op->a);
+    Expr new_b = Visit(op->b);
+    if (new_a->IsConst() && new_b->IsConst()) {
+      if (op->dtype.is_int()) {
+        ASSERT(new_a.as<ConstIntNode>().defined() && new_b.as<ConstIntNode>().defined());
+        long long int new_value = new_a.as<ConstIntNode>()->value - new_b.as<ConstIntNode>()->value;
+        return ConstInt::make(new_value, op->dtype);
+      } else if (op->dtype.is_uint()) {
+        ASSERT(new_a.as<ConstUIntNode>().defined() && new_b.as<ConstUIntNode>().defined());
+        unsigned long long int new_value =
+            new_a.as<ConstUIntNode>()->value - new_b.as<ConstUIntNode>()->value;
+        return ConstUInt::make(new_value, op->dtype);
+      } else if (op->dtype.is_float()) {
+        ASSERT(new_a.as<ConstFloatNode>().defined() && new_b.as<ConstFloatNode>().defined());
+        double new_value = new_a.as<ConstFloatNode>()->value - new_b.as<ConstFloatNode>()->value;
+        return ConstFloat::make(new_value, op->dtype);
+      }
+    }
+    return Sub::make(Visit(op->a), Visit(op->b));
+  }
+
+  Expr ImplVisit(Mul op) override {
+    Expr new_a = Visit(op->a);
+    Expr new_b = Visit(op->b);
+    if (new_a->IsConst() && new_b->IsConst()) {
+      if (op->dtype.is_int()) {
+        ASSERT(new_a.as<ConstIntNode>().defined() && new_b.as<ConstIntNode>().defined());
+        long long int new_value = new_a.as<ConstIntNode>()->value * new_b.as<ConstIntNode>()->value;
+        return ConstInt::make(new_value, op->dtype);
+      } else if (op->dtype.is_uint()) {
+        ASSERT(new_a.as<ConstUIntNode>().defined() && new_b.as<ConstUIntNode>().defined());
+        unsigned long long int new_value =
+            new_a.as<ConstUIntNode>()->value * new_b.as<ConstUIntNode>()->value;
+        return ConstUInt::make(new_value, op->dtype);
+      } else if (op->dtype.is_float()) {
+        ASSERT(new_a.as<ConstFloatNode>().defined() && new_b.as<ConstFloatNode>().defined());
+        double new_value = new_a.as<ConstFloatNode>()->value * new_b.as<ConstFloatNode>()->value;
+        return ConstFloat::make(new_value, op->dtype);
+      }
+    }
+    return Mul::make(Visit(op->a), Visit(op->b));
+  }
+
+  Expr ImplVisit(Div op) override {
+    Expr new_a = Visit(op->a);
+    Expr new_b = Visit(op->b);
+    if (new_a->IsConst() && new_b->IsConst()) {
+      if (op->dtype.is_int()) {
+        ASSERT(new_a.as<ConstIntNode>().defined() && new_b.as<ConstIntNode>().defined());
+        long long int new_value = new_a.as<ConstIntNode>()->value / new_b.as<ConstIntNode>()->value;
+        return ConstInt::make(new_value, op->dtype);
+      } else if (op->dtype.is_uint()) {
+        ASSERT(new_a.as<ConstUIntNode>().defined() && new_b.as<ConstUIntNode>().defined());
+        unsigned long long int new_value =
+            new_a.as<ConstUIntNode>()->value / new_b.as<ConstUIntNode>()->value;
+        return ConstUInt::make(new_value, op->dtype);
+      } else if (op->dtype.is_float()) {
+        ASSERT(new_a.as<ConstFloatNode>().defined() && new_b.as<ConstFloatNode>().defined());
+        double new_value = new_a.as<ConstFloatNode>()->value / new_b.as<ConstFloatNode>()->value;
+        return ConstFloat::make(new_value, op->dtype);
+      }
+    }
+    return Div::make(Visit(op->a), Visit(op->b));
+  }
+
+  Expr ImplVisit(Mod op) override {
+    Expr new_a = Visit(op->a);
+    Expr new_b = Visit(op->b);
+    if (new_a->IsConst() && new_b->IsConst()) {
+      if (op->dtype.is_int()) {
+        ASSERT(new_a.as<ConstIntNode>().defined() && new_b.as<ConstIntNode>().defined());
+        long long int new_value = new_a.as<ConstIntNode>()->value % new_b.as<ConstIntNode>()->value;
+        return ConstInt::make(new_value, op->dtype);
+      } else if (op->dtype.is_uint()) {
+        ASSERT(new_a.as<ConstUIntNode>().defined() && new_b.as<ConstUIntNode>().defined());
+        unsigned long long int new_value =
+            new_a.as<ConstUIntNode>()->value % new_b.as<ConstUIntNode>()->value;
+        return ConstUInt::make(new_value, op->dtype);
+      }
+    }
+    return Mod::make(Visit(op->a), Visit(op->b));
   }
 
   Expr operator()(IRBase expr) override { return Visit(expr); }

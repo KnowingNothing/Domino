@@ -52,4 +52,9 @@ Var var(const std::string dtype, const std::string& name) {
   return Var::make(type, name);
 }
 
+ConstVar const_var(const std::string dtype, const std::string& name) {
+  DType type = DType::make(dtype);
+  return ConstVar::make(type, name);
+}
+
 }  // namespace domino

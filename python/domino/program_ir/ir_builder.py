@@ -53,7 +53,9 @@ class Array(object):
         for s in self.slices:
             if isinstance(s, slice):
                 assert counter < length
-                idx = s.start + indices[counter] * s.step
+                start = s.start if s.start is not None else 0
+                step = s.step if s.step is not None else 1
+                idx = start + indices[counter] * step
                 origin_indices.append(idx)
             else:
                 origin_indices.append(s)
@@ -432,11 +434,12 @@ class IRBuilderContext(object):
         return ret
 
 
-def program_lower(func, tensor_inputs, scalar_inputs=None, ctx=None):
+def program_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=None):
     ctx = IRBuilderContext() if ctx is None else ctx
     assert isinstance(ctx, IRBuilderContext)
 
-    tensor_input_vars = [Var(t.dtype, t.name) for t in tensor_inputs]
+    tensor_input_vars = [t.var for t in tensor_inputs]
+
     input_arrays = []
     for v, t in zip(tensor_input_vars, tensor_inputs):
         ctx.bind_input(v, t)
