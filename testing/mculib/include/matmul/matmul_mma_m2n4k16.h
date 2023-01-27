@@ -6,7 +6,7 @@
 
 namespace mculib {
 
-void matmul_s8s8s8_acc32_mx_n4x_k16x_row_row_mma_m2n2k16_boffset(
+inline void matmul_s8s8s8_acc32_mx_n4x_k16x_row_row_mma_m2n2k16_boffset(
     const int8_t* ptr_A, int8_t* ptr_B, int8_t* ptr_C, float* scales, int8_t* ptr_bias, int M, int N,
     int K, int32_t B_offset, int32_t C_offset, int32_t clip_min, int32_t clip_max) {
   int remain_M = M & 1;
