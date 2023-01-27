@@ -24,13 +24,17 @@ def batch_matmul_chain_s8s8s8_acc32_m2x_n4x_k16x_l16x_row_col_col_mma_m2n2k16_ao
             with ctx.reduce_for("lo", Range(LO)) as lo:
                 with ctx.spatial_for("li", Range(KI//NI)) as li:
                     inter_scale_array = vload_to_register_array(
-                        ctx, "inter_scale", inter_scales[batch*L:(batch+1)*L][lo*KI:(lo+1)*KI][li*NI:(li+1)*NI], NI)
+                        ctx, "inter_scale", inter_scales.ref(batch, lo*KI + li*NI), NI)
                     acc1_array = alloc_register_array(
                         ctx, [MI, NI], "int32", "acc1", 0)
                     with ctx.reduce_for("ko", Range(KO)) as ko:
-                        ptr_A = [MemRef(A.var, batch * M * K + (mo * MI + mi) * K + ko * KI)
+                        # ptr_A = [MemRef(A.var, batch * M * K + (mo * MI + mi) * K + ko * KI)
+                        #          for mi in range(MI)]
+                        # ptr_B = [MemRef(B.var, batch * N * K + (lo * KI + li * NI + ni) * K + ko * KI)
+                        #          for ni in range(NI)]
+                        ptr_A = [A.ref(batch, (mo * MI + mi), ko * KI)
                                  for mi in range(MI)]
-                        ptr_B = [MemRef(B.var, batch * N * K + (lo * KI + li * NI + ni) * K + ko * KI)
+                        ptr_B = [B.ref(batch, (lo * KI + li * NI + ni), ko * KI)
                                  for ni in range(NI)]
                         mma_m2n2xk16_acc32_aoffset(
                             ctx, ptr_A, ptr_B, MI, NI, KI, acc1_array, pack_input_offset)
@@ -41,16 +45,19 @@ def batch_matmul_chain_s8s8s8_acc32_m2x_n4x_k16x_l16x_row_col_col_mma_m2n2k16_ao
 
                 with ctx.spatial_for("no", Range(NO)) as no:
                     scale_array = vload_to_register_array(
-                        ctx, "scale", scales[batch*N:(batch+1)*N][no*NI:(no+1)*NI], NI)
-                    ptr_inter = [ArrayRef(inter.var, [mi, 0])
-                                 for mi in range(MI)]
-                    ptr_C = [MemRef(C.var, batch * N * L + (no * NI + ni) * L + lo)
+                        ctx, "scale", scales.ref(batch, no*NI), NI)
+                    # ptr_inter = [ArrayRef(inter.var, [mi, 0])
+                    #              for mi in range(MI)]
+                    # ptr_C = [MemRef(C.var, batch * N * L + (no * NI + ni) * L + lo)
+                    #          for ni in range(NI)]
+                    ptr_inter = [inter.ref(mi, 0) for mi in range(MI)]
+                    ptr_C = [C.ref(batch, (no * NI + ni), lo)
                              for ni in range(NI)]
                     mma_m2n2xk16_acc32_aoffset(
                         ctx, ptr_inter, ptr_C, MI, NI, KI, acc2_array, pack_inter_offset)
                     for mi in range(MI):
                         for ni in range(NI):
-                            D[batch * M * N + (mo * MI + mi) * N + no * NI + ni] = requantize(
+                            D[batch, (mo * MI + mi), no * NI + ni] = requantize(
                                 ctx, acc2_array[mi][ni], scale_array[ni], output_offset, clip_min, clip_max
                             )
 
@@ -66,10 +73,10 @@ def batch_matmul_chain_s8s8s8_acc32_aoffset_golden(
                 acc1 = ctx.alloc([1], scope="local",
                                  dtype="int32", name="acc1")
                 with ctx.reduce_for("k", Range(K)) as k:
-                    acc1[0] = acc1[0] + (cast("int32", A[batch * M * K + m * K + k]) +
-                                         cast("int32", input_offset)) * cast("int32", B[batch * L * K + l * K + k])
+                    acc1[0] = acc1[0] + (cast("int32", A[batch, m, k]) +
+                                         cast("int32", input_offset)) * cast("int32", B[batch, l, k])
                 acc1[0] = cast("int32", cast("float32", acc1[0])
-                               * inter_scales[batch * L + l]) + inter_offset1
+                               * inter_scales[batch, l]) + inter_offset1
                 acc1[0] = clip(acc1[0], clip_min, clip_max)
                 inter[l] = cast("int8", acc1[0])
             with ctx.spatial_for("n", Range(N)) as n:
@@ -77,11 +84,11 @@ def batch_matmul_chain_s8s8s8_acc32_aoffset_golden(
                                  dtype="int32", name="acc2")
                 with ctx.reduce_for("l", Range(L)) as l:
                     acc2[0] = acc2[0] + (cast("int32", inter[l]) +
-                                         cast("int32", inter_offset2)) * cast("int32", C[batch * N * L + n * L + l])
+                                         cast("int32", inter_offset2)) * cast("int32", C[batch, n, l])
                 acc2[0] = cast("int32", cast("float32", acc2[0])
-                               * scales[batch * N + n]) + output_offset
+                               * scales[batch, n]) + output_offset
                 acc2[0] = clip(acc2[0], clip_min, clip_max)
-                D[batch * M * N + (m * N + n)] = cast("int8", acc2[0])
+                D[batch, m, n] = cast("int8", acc2[0])
 
 
 def gen_params():

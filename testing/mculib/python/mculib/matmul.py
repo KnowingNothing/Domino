@@ -20,16 +20,16 @@ def matmul_s8s8s8_acc32_m2x_n4x_k16x_row_col_mma_m2n2k16_aoffset(
         with ctx.spatial_for("mo", Range(MO)) as mo:
             acc_array = alloc_register_array(ctx, [MI, NI], "int32", "acc", 0)
             with ctx.reduce_for("ko", Range(KO)) as ko:
-                ptr_A = [MemRef(A.var, (mo * 2 + i) * K + ko * 16)
+                ptr_A = [A.ref(mo * 2 + i, ko * 16)
                          for i in range(MI)]
-                ptr_B = [MemRef(B.var, ((no * 4 + i) * K + ko * 16))
+                ptr_B = [B.ref(no * 4 + i, ko * 16)
                          for i in range(NI)]
                 mma_m2n2xk16_acc32_aoffset(
                     ctx, ptr_A, ptr_B, MI, NI, KI, acc_array, pack_input_offset)
             for mi in range(MI):
                 for ni in range(NI):
-                    C[(mo * 2 + mi) * N + no * 4 +
-                        ni] = requantize(ctx, acc_array[mi][ni], scale_array[ni], output_offset, clip_min, clip_max)
+                    C[(mo * 2 + mi), no * 4 + ni] = requantize(ctx, acc_array[mi]
+                                                               [ni], scale_array[ni], output_offset, clip_min, clip_max)
 
 
 def matmul_s8s8s8_acc32_aoffset_golden(
@@ -39,12 +39,12 @@ def matmul_s8s8s8_acc32_aoffset_golden(
         with ctx.spatial_for("n", Range(N)) as n:
             acc = ctx.alloc([1], scope="local", dtype="int32", name="acc")
             with ctx.reduce_for("k", Range(K)) as k:
-                acc[0] = acc[0] + (cast("int32", A[m * K + k]) +
-                                   cast("int32", input_offset)) * cast("int32", B[n * K + k])
+                acc[0] = acc[0] + (cast("int32", A[m, k]) +
+                                   cast("int32", input_offset)) * cast("int32", B[n, k])
             acc[0] = cast("int32", cast("float32", acc[0])
                           * scales[n]) + output_offset
             acc[0] = clip(acc[0], clip_min, clip_max)
-            C[m * N + n] = cast("int8", acc[0])
+            C[m, n] = cast("int8", acc[0])
 
 
 def gen_params():
