@@ -10,3 +10,6 @@
 [submodule "3rdparty/H2H"]
 	path = 3rdparty/H2H
 	url = git@github.com:xyzxinyizhang/H2H.git
+[submodule "3rdparty/mbed-os"]
+	path = 3rdparty/mbed-os
+	url = git@github.com:ARMmbed/mbed-os.git
