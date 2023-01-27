@@ -4,6 +4,7 @@
 #include <fmt/core.h>
 #include <ir_base.h>
 #include <kernel.h>
+#include <pass/flatten.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <ref.h>
@@ -493,6 +494,12 @@ PYBIND11_MODULE(dominoc, m) {
 
   /// bind codegen_arm_m
   gen_m.def("codegen_arm_m", &codegen_arm_m, "Codegen function for ARM Cortex M processor.");
+
+  /// submodule for pass
+  py::module_ pass_m = m.def_submodule("passes", "Pass in Domino");
+
+  /// bind flatten_array_access
+  pass_m.def("flatten_array_access", &pass::FlattenArrayAccess, "Flatten array access.");
 }
 
 }  // namespace domino

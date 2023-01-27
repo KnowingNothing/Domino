@@ -9,6 +9,7 @@ from ..type_system.dtype import DType
 from typing import Optional, Union, List, Any
 from functools import reduce
 from .simplify import substitute_block
+from ..passes import flatten_array_access
 
 __all__ = [
     "program_lower",
@@ -44,6 +45,9 @@ class Array(object):
     def dtype(self):
         return self.var.dtype
 
+    def ref(self, *indices):
+        return ArrayRef(self.var, indices)
+
     def calculate_slice_indices(self, indices):
         if self.origin is None:
             return indices
@@ -70,7 +74,7 @@ class Array(object):
     def __getitem__(self, keys):
         if not isinstance(keys, tuple):
             keys = (keys,)
-        assert len(keys) == len(self.shape)
+        assert len(keys) == len(self.shape), f"{keys} vs {self.shape}"
         new_shape = []
         indices = []
         for i, k in enumerate(keys):
@@ -434,6 +438,15 @@ class IRBuilderContext(object):
         return ret
 
 
+def flatten_arrays(body: Block, arrays: List[Array]):
+    var_list = []
+    strides = []
+    for array in arrays:
+        var_list.append(array.var)
+        strides.append(ExprList([_to_expr(x) for x in array.shape]))
+    return flatten_array_access(body, var_list, strides)
+
+
 def program_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=None):
     ctx = IRBuilderContext() if ctx is None else ctx
     assert isinstance(ctx, IRBuilderContext)
@@ -443,7 +456,7 @@ def program_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=Non
     input_arrays = []
     for v, t in zip(tensor_input_vars, tensor_inputs):
         ctx.bind_input(v, t)
-        array = Array(ctx, v, [reduce(lambda x, y: x * y, t.shape, 1)])
+        array = Array(ctx, v, t.shape) # [reduce(lambda x, y: x * y, t.shape, 1)]
         input_arrays.append(array)
         ctx.bind_array(v, array)
 
@@ -451,6 +464,9 @@ def program_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=Non
 
     func(ctx, *input_arrays, *scalar_inputs)
     body = ctx.build()
+
+    # basic passes (TODO: pass management still in progress)
+    body = flatten_arrays(body, input_arrays)
 
     signature = KernelSignature(
         func.__name__, tensor_input_vars, scalar_inputs)

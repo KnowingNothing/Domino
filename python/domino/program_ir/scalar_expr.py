@@ -240,8 +240,9 @@ def _to_expr(expr):
         return ConstFloat(expr)
     if isinstance(expr, str):
         return ConstString(expr)
-    if isinstance(expr, list):
+    if isinstance(expr, (list, tuple)):
         return ExprList([_to_expr(x) for x in expr])
+    print(type(expr))
     raise ValueError(f"Can't covert {expr} to Expr.")
 
 
@@ -300,6 +301,15 @@ class ArrayRef(ir.ArrayRef, Expr):
         args = _to_expr(args)
         ir.ArrayRef.__init__(self, var, args)
         Expr.__init__(self, _dtype("mem_ref"))
+
+    def __getitem__(self, keys):
+        if isinstance(keys, (list, tuple)):
+            assert len(keys) == 1, "Only support 1-D index to ArrayRef"
+            keys = keys[0]
+        keys = _to_expr(keys)
+        new_args = [x for x in self.args.value_list]
+        new_args[-1] = Add(new_args[-1], keys)
+        return NdLoad(MemRef(self.var, 0), new_args)
 
 ## =-------------------------------------------------------------------=##
 ##

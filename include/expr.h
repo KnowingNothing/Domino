@@ -60,9 +60,11 @@ struct BinExprNode : public ExprNode {
   BinExprNode(DType dtype, Expr lhs, Expr rhs)
       : ExprNode(std::move(dtype)), a(std::move(lhs)), b(std::move(rhs)) {
     ASSERT(a.defined() && b.defined());
-    ASSERT(a->dtype == b->dtype) << fmt::format(
-        "Binary expression expects the same type for operands, but get {} and {}",
-        std::string(a->dtype), std::string(b->dtype));
+    ASSERT(a->dtype == b->dtype)
+        << fmt::format("Binary expression expects the same type for operands, but get {} and {}",
+                       std::string(a->dtype), std::string(b->dtype))
+        << "\n"
+        << std::string(a) << " vs " << std::string(b) << "\n";
   }
 
   operator std::string() const override {
@@ -632,6 +634,10 @@ class ExprListNode : public ExprNode {
     ASSERT(e.defined());
     this->value_list.push_back(e);
   }
+
+  Expr operator[](int index) const { return this->value_list[index]; }
+
+  size_t size() const { return this->value_list.size(); }
 
   operator std::string() const override {
     std::vector<std::string> strs;
