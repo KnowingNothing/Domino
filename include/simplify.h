@@ -444,6 +444,24 @@ class ExprSimplifier : public ExprMutator {
     return Mod::make(Visit(op->a), Visit(op->b));
   }
 
+  Expr ImplVisit(FloorDiv op) override {
+    Expr new_a = Visit(op->a);
+    Expr new_b = Visit(op->b);
+    if (new_a->IsConst() && new_b->IsConst()) {
+      if (op->dtype.is_int()) {
+        ASSERT(new_a.as<ConstIntNode>().defined() && new_b.as<ConstIntNode>().defined());
+        long long int new_value = new_a.as<ConstIntNode>()->value / new_b.as<ConstIntNode>()->value;
+        return ConstInt::make(new_value, op->dtype);
+      } else if (op->dtype.is_uint()) {
+        ASSERT(new_a.as<ConstUIntNode>().defined() && new_b.as<ConstUIntNode>().defined());
+        unsigned long long int new_value =
+            new_a.as<ConstUIntNode>()->value / new_b.as<ConstUIntNode>()->value;
+        return ConstUInt::make(new_value, op->dtype);
+      }
+    }
+    return Mod::make(Visit(op->a), Visit(op->b));
+  }
+
   Expr operator()(IRBase expr) override { return Visit(expr); }
 
  protected:

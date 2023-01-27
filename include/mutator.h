@@ -85,17 +85,19 @@ class ExprMutator : public IRFunctor<Expr()> {
   }
 
   Expr ImplVisit(Var op) override {
-    Expr id = Visit(op->id);
-    ConstString as_id = id.as<ConstStringNode>();
-    ASSERT(as_id.defined());
-    return Var::make(op->dtype, as_id);
+    return op;
+    // Expr id = Visit(op->id);
+    // ConstString as_id = id.as<ConstStringNode>();
+    // ASSERT(as_id.defined());
+    // return Var::make(op->dtype, as_id);
   }
 
   Expr ImplVisit(ConstVar op) override {
-    Expr id = Visit(op->id);
-    ConstString as_id = id.as<ConstStringNode>();
-    ASSERT(as_id.defined());
-    return ConstVar::make(op->dtype, as_id);
+    return op;
+    // Expr id = Visit(op->id);
+    // ConstString as_id = id.as<ConstStringNode>();
+    // ASSERT(as_id.defined());
+    // return ConstVar::make(op->dtype, as_id);
   }
 
   Expr ImplVisit(ConstInt op) override { return op; }
@@ -210,16 +212,11 @@ class StmtMutator : public IRFunctor<Stmt()> {
 
  public:
   StmtMutator() : expr_mutator(new ExprMutator()) {}
-  ~StmtMutator() {
-    if (expr_mutator != nullptr) {
-      delete expr_mutator;
-    }
-  }
-  StmtMutator(ExprMutator* mutator) : expr_mutator(mutator) {}
+  StmtMutator(std::shared_ptr<ExprMutator> mutator) : expr_mutator(mutator) {}
   Expr VisitExpr(Expr expr) { return expr_mutator->Visit(expr); }
 
- private:
-  ExprMutator* expr_mutator = nullptr;
+ protected:
+  std::shared_ptr<ExprMutator> expr_mutator = (nullptr);
 };
 
 class BlockMutator : public IRFunctor<Block()> {
@@ -321,17 +318,12 @@ class BlockMutator : public IRFunctor<Block()> {
 
  public:
   BlockMutator() : stmt_mutator(new StmtMutator()) {}
-  ~BlockMutator() {
-    if (stmt_mutator != nullptr) {
-      delete stmt_mutator;
-    }
-  }
-  BlockMutator(StmtMutator* mutator) : stmt_mutator(mutator) {}
+  BlockMutator(std::shared_ptr<StmtMutator> mutator) : stmt_mutator(mutator) {}
   Expr VisitExpr(Expr expr) { return stmt_mutator->VisitExpr(expr); }
   Stmt VisitStmt(Stmt expr) { return stmt_mutator->Visit(expr); }
 
- private:
-  StmtMutator* stmt_mutator = nullptr;
+ protected:
+  std::shared_ptr<StmtMutator> stmt_mutator = (nullptr);
 };
 
 }  // namespace domino

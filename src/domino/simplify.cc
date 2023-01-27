@@ -23,15 +23,15 @@ Expr SubstituteExpr(Expr expr, std::unordered_map<Var, Expr> mapping) {
 }
 
 Stmt SubstituteStmt(Stmt stmt, std::unordered_map<Var, Expr> mapping) {
-  ExprSubstituter suber(mapping);
-  StmtMutator mutator(&suber);
+  auto suber = std::make_shared<ExprSubstituter>(mapping);
+  StmtMutator mutator(suber);
   return mutator(stmt);
 }
 
 Block SubstituteBlock(Block block, std::unordered_map<Var, Expr> mapping) {
-  ExprSubstituter suber(mapping);
-  StmtMutator stmt_mutator(&suber);
-  BlockMutator block_mutator(&stmt_mutator);
+  auto suber = std::make_shared<ExprSubstituter>(mapping);
+  auto stmt_mutator = std::make_shared<StmtMutator>(suber);
+  BlockMutator block_mutator(stmt_mutator);
   return block_mutator(block);
 }
 
