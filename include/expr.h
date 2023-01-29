@@ -327,6 +327,30 @@ class MaxNode : public BinExprNode {
 
 using Max = Ref<MaxNode>;
 
+class RightShiftNode : public BinExprNode {
+ public:
+  RightShiftNode(Expr a, Expr b) : BinExprNode(a->dtype, a, b) {}
+
+  operator std::string() const override {
+    return fmt::format("RightShift({}, {}, {})", std::string(this->dtype), std::string(this->a),
+                       std::string(this->b));
+  }
+};
+
+using RightShift = Ref<RightShiftNode>;
+
+class LeftShiftNode : public BinExprNode {
+ public:
+  LeftShiftNode(Expr a, Expr b) : BinExprNode(a->dtype, a, b) {}
+
+  operator std::string() const override {
+    return fmt::format("LeftShift({}, {}, {})", std::string(this->dtype), std::string(this->a),
+                       std::string(this->b));
+  }
+};
+
+using LeftShift = Ref<LeftShiftNode>;
+
 class AndNode : public BinExprNode {
  public:
   AndNode(Expr a, Expr b) : BinExprNode(DType::make("bool"), a, b) {}

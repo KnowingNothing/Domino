@@ -36,7 +36,7 @@ def generate_random_value(length, dtype):
             f"Currently don't support random generation for {dtype}")
 
 
-def gen_test_file(kernel_to_test, kernel_golden, input_tensors, input_vars, concrete_vars):
+def gen_test_file(kernel_to_test, kernel_golden, input_tensors, input_vars, concrete_vars, need_debug=True):
     header = gen_mculib_header()
     left = "{"
     right = "}"
@@ -115,7 +115,7 @@ for (int _i = 0; _i < {length}; ++_i) {left}
     return f"""
 {header}
 
-#define DEBUG 1
+{'' if need_debug else '//'} #define DEBUG 1
 
 Timer _t;
 

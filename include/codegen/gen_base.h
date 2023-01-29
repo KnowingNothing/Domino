@@ -59,6 +59,10 @@ class CodeGenBase : public IRFunctor<std::string()> {
     return fmt::format("({} > {} ? {} : {})", a, b, b, a);
   }
 
+  std::string ImplVisit(RightShift op) override { return this->visit_bin_op(op, ">>"); }
+
+  std::string ImplVisit(LeftShift op) override { return this->visit_bin_op(op, "<<"); }
+
   std::string ImplVisit(And op) override { return this->visit_bin_op(op, "&&"); }
 
   std::string ImplVisit(Or op) override { return this->visit_bin_op(op, "||"); }
@@ -164,8 +168,7 @@ class CodeGenBase : public IRFunctor<std::string()> {
   }
 
   std::string ImplVisit(MapVar op) override {
-    return fmt::format("{} {} = {}", std::string(op->var->dtype), Visit(op->var),
-                       Visit(op->expr));
+    return fmt::format("{} {} = {}", std::string(op->var->dtype), Visit(op->var), Visit(op->expr));
   }
 
   // std::string ImplVisit(Slice op) override not implemented

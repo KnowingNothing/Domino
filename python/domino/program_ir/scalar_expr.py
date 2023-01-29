@@ -10,8 +10,8 @@ _dtype = DType.make
 __all__ = [
     "Expr", "BinExpr", "UniExpr", "TerExpr", "ConstExpr", "MutableExpr",
     "MemRef", "ValueRef", "ArrayRef",
-    "Add", "Sub", "Mul", "Div", "Mod", "FloorDiv", "FloorMod", "Max", "Min", "And", "Or",
-    "XOr", "BitAnd", "BitOr", "BitXOr", "GT", "GE", "LT", "LE", "EQ", "NE",
+    "Add", "Sub", "Mul", "Div", "Mod", "FloorDiv", "FloorMod", "Max", "Min", "RightShift", "LeftShift",
+    "And", "Or", "XOr", "BitAnd", "BitOr", "BitXOr", "GT", "GE", "LT", "LE", "EQ", "NE",
     "Cast", "Broadcast", "Neg", "Not", "BitNot", "Ceil", "Floor",
     "Select",
     "Range", "ExprList",
@@ -19,7 +19,7 @@ __all__ = [
     "ConstInt", "ConstUInt", "ConstFloat", "ConstBFloat", "ConstTFloat", "ConstString", "make_const",
     "Var", "ConstVar", "IterTypeKind", "Iterator", "NdLoad", "Load", "MapVar", "Slice", "MemSlice", "Call",
     "PackValue",
-    "_to_expr", "cast", "pack_value", "clip"
+    "_to_expr", "cast", "pack_value", "clip", "sqrt", "exp"
 ]
 
 
@@ -114,10 +114,24 @@ class Expr(ir.Expr):
         raise NotImplementedError("No implementation for expression **")
 
     def __rshift__(self, others):
-        raise NotImplementedError("No implementation for expression >>")
+        if isinstance(others, ir.Expr):
+            return RightShift(self, others)
+        elif isinstance(others, int):
+            return RightShift(self, ConstInt(others))
+        elif isinstance(others, float):
+            return RightShift(self, ConstFloat(others))
+        else:
+            raise RuntimeError(f"Can't perform {self} >> {others}")
 
     def __lshift__(self, others):
-        raise NotImplementedError("No implementation for expression <<")
+        if isinstance(others, ir.Expr):
+            return LeftShift(self, others)
+        elif isinstance(others, int):
+            return LeftShift(self, ConstInt(others))
+        elif isinstance(others, float):
+            return LeftShift(self, ConstFloat(others))
+        else:
+            raise RuntimeError(f"Can't perform {self} << {others}")
 
     def __and__(self, others):
         if isinstance(others, ir.Expr):
@@ -369,6 +383,18 @@ class Max(ir.Max, BinExpr):
 class Min(ir.Min, BinExpr):
     def __init__(self, a: Expr, b: Expr):
         ir.Min.__init__(self, a, b)
+        BinExpr.__init__(self, a.dtype, a, b)
+
+
+class RightShift(ir.RightShift, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.RightShift.__init__(self, a, b)
+        BinExpr.__init__(self, a.dtype, a, b)
+
+
+class LeftShift(ir.LeftShift, BinExpr):
+    def __init__(self, a: Expr, b: Expr):
+        ir.LeftShift.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
@@ -775,4 +801,16 @@ def pack_value(dtype, values):
 
 
 def clip(value, lower, upper):
+    lower = _to_expr(lower)
+    upper = _to_expr(upper)
     return Max(lower, Min(upper, value))
+
+
+def sqrt(value):
+    value = _to_expr(value)
+    return Call(value.dtype, "sqrt", [value])
+
+
+def exp(value):
+    value = _to_expr(value)
+    return Call(value.dtype, "exp", [value])
