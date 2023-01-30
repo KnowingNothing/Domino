@@ -28,27 +28,36 @@ class BufferInfo:
 @dataclass
 class KernelInfo:
     name: str
+    kname: str
     decl: str
     code: str
 
     @staticmethod
-    def make(kernel: Kernel):
+    def make(name, kernel: Kernel):
         sig = kernel.gen_signature()
         return KernelInfo(
-            name=kernel.signature.kernel_name,
+            name=name,
+            kname=kernel.signature.kernel_name,
             decl=sig,
             code=f"{sig} {{\n{kernel.source}}}",
         )
 
 
 @dataclass
-class InvokeInfo:
+class CallInfo:
     name: str
     args: List[Union[str, int, float]]
 
 
+@dataclass
+class InvokeInfo:
+    name: str
+    calls: List[CallInfo]
+    index: int = -1
+
+
 class MbedRuntime:
-    
+
     _COMMON_HEADER = """
 #include <matmul/matmul_mma_m2n2k16.h>
 #include <matmul/matmul_mma_m2n4k16.h>
@@ -78,6 +87,8 @@ typedef float float32;
     ) -> None:
         if other_serial_configs is None:
             other_serial_configs = dict()
+        print(f"changing permission of {port} ...", file=sys.stderr)
+        os.system(f"sudo chmod o+rw {port}")
         self._serial = serial.Serial(port, timeout=timeout, **other_serial_configs)
         self._target_name = target_name
         self._target_dir = target_dir
@@ -93,7 +104,7 @@ typedef float float32;
 
         self._buffers: Dict[str, BufferInfo] = dict()
         self._kernels: Dict[str, KernelInfo] = dict()
-        self._invokes: List[InvokeInfo] = []
+        self._invokes: Dict[str, InvokeInfo] = dict()
 
         self._cache_work_dir = cache_work_dir
         self._work_dir = (
@@ -140,13 +151,13 @@ typedef float float32;
         self._serial.write(self._u32_to_bytes(nbytes))
         self._serial.write(data)
         ack = self._serial.read_until(b"\n")
-        print(ack)
 
     def _read_from_remote(self, offset, nbytes):
         self._serial.write(b"R")
         self._serial.write(self._u32_to_bytes(offset))
         self._serial.write(self._u32_to_bytes(nbytes))
         data = self._serial.read(nbytes)
+        ack = self._serial.read_until(b"\n")
         return data
 
     def _push_data(self):
@@ -228,31 +239,32 @@ typedef float float32;
             data = self._data_arena[buf.range_slice()]
         return np.frombuffer(data, dtype=str(buf.dtype))
 
-    def add_kernel(self, kernel: Kernel):
-        kinfo = KernelInfo.make(kernel)
-        self._kernels[kinfo.name] = kinfo
+    def set_kernel(self, name, kernel: Kernel):
+        kinfo = KernelInfo.make(name, kernel)
+        self._kernels[name] = kinfo
         self._gen_kernel_file(kinfo)
         self._local_const_dirty = True
 
-    def set_invokes(self, invokes):
-        self._invokes.clear()
-        for ivk in invokes:
-            if not isinstance(ivk, InvokeInfo):
-                ivk = InvokeInfo(*ivk)
-            self._invokes.append(ivk)
+    def set_invoke(self, name, calls: List[CallInfo]):
+        calls = [ivk if isinstance(ivk, CallInfo) else CallInfo(*ivk) for ivk in calls]
+        ivk = self._invokes.get(name, InvokeInfo(name, calls, len(self._invokes)))
+        ivk.calls = calls
+        self._invokes[name] = ivk
         self._local_const_dirty = True
 
-    def execute(self):
+    def execute(self, name):
         self._sync_local()
-        print("executing ...", file=sys.stderr)
+        print(f"executing invoke {name} ...", file=sys.stderr)
         self._serial.write(b"E")
+        self._serial.write(self._u32_to_bytes(self._invokes[name].index))
         _ = self._serial.read_until(b"\n")
         self._remote_data_dirty = True
         print("executing done", file=sys.stderr)
 
-    def time(self, number=1, repeat=1):
+    def time(self, name, number=1, repeat=1):
         self._sync_local()
         self._serial.write(b"T")
+        self._serial.write(self._u32_to_bytes(self._invokes[name].index))
         # self._serial.write(self._u32_to_bytes(number))
         # self._serial.write(self._u32_to_bytes(repeat))
         ack = self._serial.read_until(b"\n")
@@ -268,12 +280,15 @@ typedef float float32;
         old_dir = os.getcwd()
         os.chdir(self._work_dir)
         print("compiling ...", file=sys.stderr)
-        os.system(f"mbed_tools compile -t {self._toolchain} -m {self._target_name}")
+        assert not os.system(
+            f"mbed_tools compile -t {self._toolchain} -m {self._target_name}"
+        ), "compiling failed"
         print("compiling done", file=sys.stderr)
         print("flashing ...", file=sys.stderr)
-        os.system(
-            rf"cp $(find -regex '.*{self._target_name}.*domino_mbed_runtime\.bin') {self._target_dir}"
-        )
+        assert not os.system(
+            rf"sudo cp $(find -regex '.*{self._target_name}.*domino_mbed_runtime\.bin') {self._target_dir}"
+        ), "flashing failed"
+        ack = self._serial.read_until(b"\n")
         print("flashing done", file=sys.stderr)
         os.chdir(old_dir)
 
@@ -317,14 +332,24 @@ endif()
             wf.write(code)
 
     def _gen_main_file(self):
+        id2ivk = sorted(list(self._invokes.values()), key=lambda ivk: ivk.index)
+        ivk_str = ""
+        for ind, ivk in enumerate(id2ivk):
+            calls_str = " ".join(
+                f'{self._kernels[call.name].kname}({", ".join(str(a) for a in call.args)});'
+                for call in ivk.calls
+            )
+            ivk_str += f"void invoke{ind}() {{ {calls_str} }}\n"
+        ivk_str += f"void (* invokes[{len(id2ivk)}])() = {{ {', '.join(f'invoke{i}' for i in range(len(id2ivk)))} }};\n"
+
         code = (
             f"""        
 {self._COMMON_HEADER}
 
 {' '.join(k.decl + ';' for k in self._kernels.values())}
 
-uint8_t data_arena[{len(self._data_arena)}];
-const uint8_t const_arena[{len(self._const_arena)}] = {{{','.join(str(b) for b in self._const_arena)}}};
+alignas(int64_t) uint8_t data_arena[{len(self._data_arena)}];
+alignas(int64_t) const uint8_t const_arena[{len(self._const_arena)}] = {{{','.join(str(b) for b in self._const_arena)}}};
 
 {' '.join(
     f'const {buf.dtype}* {buf.name} = (const {buf.dtype}*)(const_arena + {buf.offset});'
@@ -333,7 +358,7 @@ const uint8_t const_arena[{len(self._const_arena)}] = {{{','.join(str(b) for b i
     for buf in self._buffers.values()
 )}
 
-#define RUN_ALL {' '.join(f'{ivk.name}({", ".join(str(a) for a in ivk.args)});' for ivk in self._invokes)}
+{ivk_str}
         """
             + r"""
 uint32_t get_u32() {
@@ -345,14 +370,17 @@ uint32_t get_u32() {
 }
 
 void exec_it() {
-  RUN_ALL;
+  uint32_t idx = get_u32();
+  invokes[idx]();
   printf("done\n");
 }
 
 void time_it() {
+  uint32_t idx = get_u32();
+  void (* ivk)() = invokes[idx];
   Timer timer;
   timer.start();
-  RUN_ALL;
+  ivk();
   timer.stop();
   printf("%lld ms\n",
          std::chrono::duration_cast<std::chrono::milliseconds>(timer.elapsed_time()).count());
@@ -362,6 +390,7 @@ void read_data() {
   uint32_t base = get_u32();
   uint32_t size = get_u32();
   fwrite(data_arena + base, sizeof(int8_t), size, stdout);
+  printf("done\n");
 }
 
 void write_data() {
@@ -372,6 +401,7 @@ void write_data() {
 }
 
 int main() {
+  printf("start\n");
   while (1) {
     int act = fgetc(stdin);
     switch (act) {
