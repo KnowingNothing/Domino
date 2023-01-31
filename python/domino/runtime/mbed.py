@@ -205,6 +205,8 @@ typedef float float32;
     def alloc_buffer(
         self, name, nbytes, dtype: DType, offset=None, const=False, data=None
     ):
+        if not isinstance(dtype, DType):
+            dtype = DType.from_string(str(dtype))
         dt_bytes = dtype.bits // 8
         arena = self._const_arena if const else self._data_arena
         if offset is None:
@@ -221,9 +223,8 @@ typedef float float32;
             self.set_buffer_data(name, data)
 
     def alloc_buffer_from_numpy(self, name, arr: np.ndarray, offset=None, const=False):
-        dtype = DType.from_string(str(arr.dtype))
         data = arr.tobytes()
-        self.alloc_buffer(name, len(data), dtype, offset, const, data)
+        self.alloc_buffer(name, len(data), arr.dtype, offset, const, data)
 
     def set_buffer_data(self, name, data: bytes):
         if isinstance(data, np.ndarray):
@@ -284,7 +285,7 @@ typedef float float32;
         self._remote_data_dirty = True
         print("executing done", file=sys.stderr)
 
-    def time(self, name, number=1, repeat=1):
+    def execute_and_time(self, name, number=1, repeat=1):
         self._sync_local()
         self._serial.write(
             b"".join(
