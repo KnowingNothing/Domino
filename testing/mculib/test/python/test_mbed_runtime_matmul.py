@@ -25,8 +25,11 @@ def test_run_matmul():
 
     rt.set_kernel("golden", golden)
     rt.set_kernel("kernel", kernel)
-    rt.set_invoke("golden", [("golden", ["A", "B", "C", "scales"] + values)])
-    rt.set_invoke("kernel", [("kernel", ["A", "B", "C", "scales"] + values)])
+
+    args = [str(ts.name) for ts in tensors] + values
+    rt.set_invoke("golden", [("golden", args)])
+    rt.set_invoke("kernel", [("kernel", args)])
+    rt.set_invoke("golden+kernel", [("golden", args), ("kernel", args)])
 
     rt.execute("golden")
     print(rt.get_buffer_numpy("A"))
@@ -34,6 +37,11 @@ def test_run_matmul():
     print(rt.get_buffer_numpy("C"))
 
     rt.execute("kernel")
+    print(rt.get_buffer_numpy("A"))
+    print(rt.get_buffer_numpy("B"))
+    print(rt.get_buffer_numpy("C"))
+
+    rt.execute("golden+kernel")
     print(rt.get_buffer_numpy("A"))
     print(rt.get_buffer_numpy("B"))
     print(rt.get_buffer_numpy("C"))

@@ -77,21 +77,24 @@ typedef float float32;
 
     def __init__(
         self,
-        port,
+        serial_port,
         target_name,
-        target_dir,
+        mount_point,
         toolchain="GCC_ARM",
-        timeout=10,
+        timeout=None,
         cache_work_dir=True,
         other_serial_configs=None,
     ) -> None:
         if other_serial_configs is None:
             other_serial_configs = dict()
-        print(f"changing permission of {port} ...", file=sys.stderr)
-        os.system(f"sudo chmod o+rw {port}")
-        self._serial = serial.Serial(port, timeout=timeout, **other_serial_configs)
+        print(f"changing permission of {serial_port} ...", file=sys.stderr)
+        os.system(f"sudo chmod o+rw {serial_port}")
+        self._serial = serial.Serial(
+            serial_port, timeout=timeout, **other_serial_configs
+        )
+        assert os.path.exists(mount_point), f"mount point {mount_point} does not exist"
         self._target_name = target_name
-        self._target_dir = target_dir
+        self._mount_point = mount_point
         self._toolchain = toolchain
 
         self._data_arena = bytearray()
@@ -146,18 +149,32 @@ typedef float float32;
         return bytes([v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF])
 
     def _write_to_remote(self, offset, nbytes, data: bytes):
-        self._serial.write(b"W")
-        self._serial.write(self._u32_to_bytes(offset))
-        self._serial.write(self._u32_to_bytes(nbytes))
-        self._serial.write(data)
+        self._serial.write(
+            b"".join(
+                [
+                    b"W",
+                    self._u32_to_bytes(offset),
+                    self._u32_to_bytes(nbytes),
+                    data,
+                ]
+            )
+        )
         ack = self._serial.read_until(b"\n")
+        assert b"done" in ack, ack
 
     def _read_from_remote(self, offset, nbytes):
-        self._serial.write(b"R")
-        self._serial.write(self._u32_to_bytes(offset))
-        self._serial.write(self._u32_to_bytes(nbytes))
+        self._serial.write(
+            b"".join(
+                [
+                    b"R",
+                    self._u32_to_bytes(offset),
+                    self._u32_to_bytes(nbytes),
+                ]
+            )
+        )
         data = self._serial.read(nbytes)
         ack = self._serial.read_until(b"\n")
+        assert b"done" in ack, ack
         return data
 
     def _push_data(self):
@@ -188,7 +205,6 @@ typedef float float32;
     def alloc_buffer(
         self, name, nbytes, dtype: DType, offset=None, const=False, data=None
     ):
-        # assert name not in self._buffers
         dt_bytes = dtype.bits // 8
         arena = self._const_arena if const else self._data_arena
         if offset is None:
@@ -254,20 +270,34 @@ typedef float float32;
 
     def execute(self, name):
         self._sync_local()
-        print(f"executing invoke {name} ...", file=sys.stderr)
-        self._serial.write(b"E")
-        self._serial.write(self._u32_to_bytes(self._invokes[name].index))
-        _ = self._serial.read_until(b"\n")
+        print(f"executing '{name}' ...", file=sys.stderr)
+        self._serial.write(
+            b"".join(
+                [
+                    b"E",
+                    self._u32_to_bytes(self._invokes[name].index),
+                ]
+            )
+        )
+        ack = self._serial.read_until(b"\n")
+        assert b"done" in ack, ack
         self._remote_data_dirty = True
         print("executing done", file=sys.stderr)
 
     def time(self, name, number=1, repeat=1):
         self._sync_local()
-        self._serial.write(b"T")
-        self._serial.write(self._u32_to_bytes(self._invokes[name].index))
+        self._serial.write(
+            b"".join(
+                [
+                    b"T",
+                    self._u32_to_bytes(self._invokes[name].index),
+                ]
+            )
+        )
         # self._serial.write(self._u32_to_bytes(number))
         # self._serial.write(self._u32_to_bytes(repeat))
         ack = self._serial.read_until(b"\n")
+        assert b"done" in ack, ack
         self._remote_data_dirty = True
         return ack.decode()
 
@@ -279,17 +309,28 @@ typedef float float32;
 
         old_dir = os.getcwd()
         os.chdir(self._work_dir)
+
         print("compiling ...", file=sys.stderr)
         assert not os.system(
             f"mbed_tools compile -t {self._toolchain} -m {self._target_name}"
         ), "compiling failed"
         print("compiling done", file=sys.stderr)
+        
         print("flashing ...", file=sys.stderr)
         assert not os.system(
-            rf"sudo cp $(find -regex '.*{self._target_name}.*domino_mbed_runtime\.bin') {self._target_dir}"
+            rf"sudo cp $(find -regex '.*{self._target_name}.*domino_mbed_runtime\.bin') {self._mount_point}/"
         ), "flashing failed"
-        ack = self._serial.read_until(b"\n")
+        old_timeout = self._serial.timeout
+        self._serial.timeout = 0.1
+        for _ in range(100):
+            self._serial.write(b"H")
+            ack = self._serial.read_until(b"\n")
+            if b"hello" in ack:
+                break
+        assert b"hello" in ack, ack
+        self._serial.timeout = old_timeout
         print("flashing done", file=sys.stderr)
+
         os.chdir(old_dir)
 
         self._local_data_dirty = True
@@ -382,7 +423,7 @@ void time_it() {
   timer.start();
   ivk();
   timer.stop();
-  printf("%lld ms\n",
+  printf("done: %lld ms\n",
          std::chrono::duration_cast<std::chrono::milliseconds>(timer.elapsed_time()).count());
 }
 
@@ -401,10 +442,12 @@ void write_data() {
 }
 
 int main() {
-  printf("start\n");
   while (1) {
     int act = fgetc(stdin);
     switch (act) {
+      case 'H':
+        printf("hello\n");
+        break;
       case 'E':
         exec_it();
         break;
@@ -418,7 +461,7 @@ int main() {
         write_data();
         break;
       default:
-        printf("unknown action\n");
+        printf("unknown action: %c\n", act);
         break;
     }
   }
