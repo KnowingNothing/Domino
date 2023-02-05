@@ -16,7 +16,8 @@ def test_run_matmul():
         127,
     ]
     values = [M, N, K, input_offset, output_offset, clip_min, clip_max]
-    rt = MbedRuntime("/dev/ttyACM0", "NUCLEO_H7A3ZI_Q", "/media/herlight/NOD_H7A3ZIQ")
+    # rt = MbedRuntime("/dev/ttyACM0", "NUCLEO_H7A3ZI_Q")
+    rt = MbedRuntime.from_target_name()
 
     rt.alloc_buffer_from_numpy("A", np.ones([32, 32], dtype="int8"))
     rt.alloc_buffer_from_numpy("B", np.ones([32, 32], dtype="int8"), const=True)

@@ -11,6 +11,7 @@ import os
 import shutil
 import sys
 import math
+import stat
 
 
 @dataclass
@@ -57,45 +58,57 @@ class InvokeInfo:
 
 
 class MbedRuntime:
-
-    _COMMON_HEADER = """
-#include <matmul/matmul_mma_m2n2k16.h>
-#include <matmul/matmul_mma_m2n4k16.h>
-
-#include <cstdlib>
-#include <cmath>
-
-#include "mbed.h"
-
-using namespace mculib;
-
-typedef int8_t int8;
-typedef int16_t int16;
-typedef int32_t int32;
-typedef float float32;
-"""
-
     def __init__(
         self,
         serial_port,
         target_name,
-        mount_point,
+        mount_point=None,
+        device_path=None,
         toolchain="GCC_ARM",
         timeout=None,
         cache_work_dir=True,
         other_serial_configs=None,
     ) -> None:
+        st = os.stat(serial_port)
+        if not ((st.st_mode & stat.S_IROTH) and (st.st_mode & stat.S_IWOTH)):
+            print(
+                f"{serial_port} is not accessible, try to change its access permission ...",
+                file=sys.stderr,
+            )
+            assert not os.system(f"sudo chmod o+rw {serial_port}"), "changing failed"
         if other_serial_configs is None:
             other_serial_configs = dict()
-        print(f"changing permission of {serial_port} ...", file=sys.stderr)
-        os.system(f"sudo chmod o+rw {serial_port}")
         self._serial = serial.Serial(
             serial_port, timeout=timeout, **other_serial_configs
         )
-        assert os.path.exists(mount_point), f"mount point {mount_point} does not exist"
+
+        if mount_point is None:
+            mount_point = os.getenv(
+                "DOMINO_MBED_BLK_DEV_MNT_PNT",
+                str(os.path.join(os.getenv("HOME"), ".local/.domino_mbed_device")),
+            )
+        if device_path is None:
+            import pyudev
+
+            ctx = pyudev.Context()
+            ser_dev = pyudev.Devices.from_device_file(ctx, serial_port)
+            blk_devs = list(
+                ctx.list_devices(
+                    subsystem="block",
+                    ID_BUS="usb",
+                    ID_SERIAL_SHORT=ser_dev.properties.get("ID_SERIAL_SHORT"),
+                )
+            )
+            assert (
+                len(blk_devs) > 0
+            ), f"no block device attached with a same serial number of {serial_port}"
+            device_path = blk_devs[0].properties.get("DEVNAME")
+
         self._target_name = target_name
         self._mount_point = mount_point
+        self._device_path = device_path
         self._toolchain = toolchain
+        self._check_mount()
 
         self._data_arena = bytearray()
         self._const_arena = bytearray()
@@ -109,7 +122,6 @@ typedef float float32;
         self._kernels: Dict[str, KernelInfo] = dict()
         self._invokes: Dict[str, InvokeInfo] = dict()
 
-        self._cache_work_dir = cache_work_dir
         self._work_dir = (
             os.getenv(
                 "DOMINO_MBED_RT_WORK_DIR",
@@ -126,6 +138,39 @@ typedef float float32;
                 os.path.join(self._work_dir, "mbed-os"),
                 target_is_directory=True,
             )
+        self._cache_work_dir = cache_work_dir
+
+    @staticmethod
+    def from_target_name(
+        target_name="",
+        toolchain="GCC_ARM",
+        timeout=None,
+        cache_work_dir=True,
+        other_serial_configs=None,
+    ):
+        from mbed_tools.devices import get_connected_devices
+
+        devices = get_connected_devices().identified_devices
+        target_dev = None
+        for dev in devices:
+            if not dev.mbed_enabled:
+                continue
+            if target_name in dev.mbed_board.board_type:
+                target_dev = dev
+                break
+        assert (
+            target_dev is not None
+        ), f"cannot find connected board containing name '{target_name}'"
+
+        return MbedRuntime(
+            target_dev.serial_port,
+            target_dev.mbed_board.board_type,
+            target_dev.mount_points[0],
+            toolchain=toolchain,
+            timeout=timeout,
+            cache_work_dir=cache_work_dir,
+            other_serial_configs=other_serial_configs,
+        )
 
     def __del__(self):
         self._serial.close()
@@ -143,6 +188,39 @@ typedef float float32;
             print(f"downloading mbed-os to {path} ...", file=sys.stderr)
             os.system(f"git clone git@github.com:ARMmbed/mbed-os.git --depth=1 {path}")
         return path
+
+    def _check_mount(self):
+        mount_point = self._mount_point
+        device_path = self._device_path
+        if not os.path.ismount(mount_point):
+            print(
+                f"{mount_point} is not a mount-point, try to mount {device_path} to it ...",
+                file=sys.stderr,
+            )
+            assert stat.S_ISBLK(
+                os.stat(device_path).st_mode
+            ), f"{device_path} is not a block device"
+            options = [
+                "rw",
+                "nosuid",
+                "nodev",
+                "relatime",
+                f"uid={os.getuid()}",
+                f"gid={os.getgid()}",
+                "fmask=0022",
+                "dmask=0022",
+                "codepage=437",
+                "iocharset=iso8859-1",
+                "shortname=mixed",
+                "showexec",
+                "utf8",
+                "flush",
+                "errors=remount-ro",
+                "uhelper=udisks2",
+            ]
+            assert not os.system(
+                f"sudo mount --mkdir -t vfat -o {','.join(options)} {device_path} {mount_point}"
+            ), "mounting failed"
 
     @staticmethod
     def _u32_to_bytes(v):
@@ -316,10 +394,11 @@ typedef float float32;
             f"mbed_tools compile -t {self._toolchain} -m {self._target_name}"
         ), "compiling failed"
         print("compiling done", file=sys.stderr)
-        
+
         print("flashing ...", file=sys.stderr)
+        self._check_mount()
         assert not os.system(
-            rf"sudo cp $(find -regex '.*{self._target_name}.*domino_mbed_runtime\.bin') {self._mount_point}/"
+            rf"cp $(find -regex '.*{self._target_name}.*domino_mbed_runtime\.bin') {self._mount_point}/"
         ), "flashing failed"
         old_timeout = self._serial.timeout
         self._serial.timeout = 0.1
@@ -471,3 +550,20 @@ int main() {
         )
         with open(os.path.join(self._work_dir, "main.cpp"), "w") as wf:
             wf.write(code)
+
+    _COMMON_HEADER = """
+#include <matmul/matmul_mma_m2n2k16.h>
+#include <matmul/matmul_mma_m2n4k16.h>
+
+#include <cstdlib>
+#include <cmath>
+
+#include "mbed.h"
+
+using namespace mculib;
+
+typedef int8_t int8;
+typedef int16_t int16;
+typedef int32_t int32;
+typedef float float32;
+"""

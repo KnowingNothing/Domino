@@ -11,10 +11,11 @@ def mlp_net_shapes(hidden_sizes, batch_size=1):
 
 def test_run_mlp_net():
     kernel, tensors, scalars = gen_matmul()
-    rt = MbedRuntime("/dev/ttyACM0", "NUCLEO_H7A3ZI_Q", "/media/herlight/NOD_H7A3ZIQ")
+    # rt = MbedRuntime("/dev/ttyACM0", "NUCLEO_H7A3ZI_Q")
+    rt = MbedRuntime.from_target_name()
 
     batch_size = 2
-    hidden_sizes = [128, 64, 32, 64, 128]
+    hidden_sizes = [256, 128, 64, 32, 64, 128, 256]
     wgt_shps = list(zip(hidden_sizes[1:], hidden_sizes))
     act_shps = [(batch_size, h) for h in hidden_sizes]
 
@@ -72,10 +73,10 @@ def test_run_mlp_net():
 
     X[...] = 1
     Y = infer(X)
-    assert np.all(Y == 16)
+    assert np.all(Y == min(int(2 ** (len(hidden_sizes) - 1)), 127))
     X[...] = 2
     Y = infer(X)
-    assert np.all(Y == 32)
+    assert np.all(Y == min(int(2 ** (len(hidden_sizes))), 127))
 
 
 if __name__ == "__main__":
