@@ -12,6 +12,13 @@ class IRPrinter : public IRFunctor<std::string()> {
  protected:
   /// expressions
   std::string ImplVisit(MemRef mem_ref) override {
+    Expr offset = mem_ref->offset;
+    ConstInt as_int = offset.as<ConstIntNode>();
+    if (as_int.defined()) {
+      if (as_int->value == 0) {
+        return fmt::format("{}", Visit(mem_ref->var));
+      }
+    }
     return fmt::format("({}+{})", Visit(mem_ref->var), Visit(mem_ref->offset));
   }
 
@@ -152,7 +159,7 @@ class IRPrinter : public IRFunctor<std::string()> {
   }
 
   std::string ImplVisit(NdLoad op) override {
-    return fmt::format("load_n({}, {})", Visit(op->mem_ref), Visit(op->indices));
+    return fmt::format("{}[{}]", Visit(op->mem_ref), Visit(op->indices));
   }
 
   std::string ImplVisit(Load op) override {
@@ -334,6 +341,46 @@ class IRPrinter : public IRFunctor<std::string()> {
     std::string right = "}";
     return fmt::format("{}alloc({}[{}]@{}) {}\n{}{}{}\n", ind, Visit(op->var), Visit(op->length),
                        Visit(op->memory_scope), left, body_str, ind, right);
+  }
+
+  std::string ImplVisit(MemoryLevel op) override {
+    std::string ind = make_indent();
+    std::string level = Visit(op->memory_level);
+    std::string body_str = Visit(op->block);
+    increase_indent();
+    std::vector<std::string> sub_levels;
+    for (auto v : op->sub_levels) {
+      sub_levels.push_back(Visit(v));
+    }
+    decrease_indent();
+    std::string left = "{";
+    std::string right = "}";
+    return fmt::format("{}memory @ L{}\n{}{}", ind, level, body_str, fmt::join(sub_levels, ""));
+  }
+
+  std::string ImplVisit(ComputeLevel op) override {
+    std::string ind = make_indent();
+    std::string level = Visit(op->compute_level);
+    std::string body_str = Visit(op->block);
+    increase_indent();
+    std::vector<std::string> sub_levels;
+    for (auto v : op->sub_levels) {
+      sub_levels.push_back(Visit(v));
+    }
+    decrease_indent();
+    std::string left = "{";
+    std::string right = "}";
+    return fmt::format("{}compute @ L{}\n{}{}", ind, level, body_str, fmt::join(sub_levels, ""));
+  }
+
+  std::string ImplVisit(Kernel op) override {
+    std::string signature = op->genSignature();
+    std::string left = "{";
+    std::string right = "}";
+    increase_indent();
+    std::string body_str = Visit(op->body);
+    decrease_indent();
+    return fmt::format("{} {}\n{}{}", signature, left, body_str, right);
   }
 
   void increase_indent() { indent_ += 1; }

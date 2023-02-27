@@ -1,3 +1,4 @@
+from .arch import *
 from .dsl import *
 from .functional import *
 from .ir_builder import *

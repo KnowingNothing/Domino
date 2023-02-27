@@ -33,6 +33,25 @@ class KernelSignatureNode : public IRBaseNode {
       : kernel_name(std::move(name)),
         kernel_args(std::move(args)),
         scalar_args(std::move(scalars)) {}
+
+  operator std::string() const override {
+    std::vector<std::string> args;
+    for (auto arg : this->kernel_args) {
+      if (!arg->IsConst()) {
+        args.push_back(fmt::format("{}* {}", std::string(arg->dtype), arg->id->value));
+      } else {
+        args.push_back(fmt::format("const {}* {}", std::string(arg->dtype), arg->id->value));
+      }
+    }
+    for (auto arg : this->scalar_args) {
+      if (!arg->IsConst()) {
+        args.push_back(fmt::format("{} {}", std::string(arg->dtype), arg->id->value));
+      } else {
+        args.push_back(fmt::format("const {} {}", std::string(arg->dtype), arg->id->value));
+      }
+    }
+    return fmt::format("void {}({})", this->kernel_name, fmt::join(args, ", "));
+  }
 };
 
 using KernelSignature = Ref<KernelSignatureNode>;
@@ -55,24 +74,7 @@ class KernelNode : public IRBaseNode {
 
   bool compiled() const { return this->source.size() > 0; }
 
-  std::string genSignature() const {
-    std::vector<std::string> args;
-    for (auto arg : this->signature->kernel_args) {
-      if (!arg->IsConst()) {
-        args.push_back(fmt::format("{}* {}", std::string(arg->dtype), arg->id->value));
-      } else {
-        args.push_back(fmt::format("const {}* {}", std::string(arg->dtype), arg->id->value));
-      }
-    }
-    for (auto arg : this->signature->scalar_args) {
-      if (!arg->IsConst()) {
-        args.push_back(fmt::format("{} {}", std::string(arg->dtype), arg->id->value));
-      } else {
-        args.push_back(fmt::format("const {} {}", std::string(arg->dtype), arg->id->value));
-      }
-    }
-    return fmt::format("void {}({})", this->signature->kernel_name, fmt::join(args, ", "));
-  }
+  std::string genSignature() const { return std::string(*(this->signature)); }
 
   std::string genFunction() const {
     std::string signature = this->genSignature();

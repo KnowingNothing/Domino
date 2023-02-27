@@ -18,7 +18,7 @@ using namespace logging;
 
 class StmtNode : public IRBaseNode {
  public:
-  virtual operator std::string() const { return fmt::format("Stmt()"); }
+  operator std::string() const override { return fmt::format("Stmt()"); }
 };
 
 using Stmt = Ref<StmtNode>;

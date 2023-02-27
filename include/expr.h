@@ -34,7 +34,7 @@ class ExprNode : public IRBaseNode {
   ExprNode(const ExprNode&) = default;
   ExprNode(ExprNode&&) = default;
   virtual bool IsConst() const { return false; }
-  virtual operator std::string() const { return fmt::format("Expr({})", std::string(dtype)); }
+  operator std::string() const override { return fmt::format("Expr({})", std::string(dtype)); }
 
   DType dtype;
 };
@@ -846,7 +846,13 @@ using ConstVar = Ref<ConstVarNode>;
 ///
 ///=----------------------------------------------------------------------------=///
 
-enum class IterTypeKind : int { kSpatial = 0, kReduce = 1, kUnroll = 2, kZigzag = 3 };
+enum class IterTypeKind : int {
+  kSpatial = 0,
+  kReduce = 1,
+  kUnroll = 2,
+  kZigzag = 3,
+  kTensorized = 4
+};
 
 std::string iter_type_to_string(IterTypeKind kind);
 

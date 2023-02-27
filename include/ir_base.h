@@ -8,7 +8,7 @@ namespace domino {
 class IRBaseNode {
  public:
   virtual ~IRBaseNode() = default;
-  operator std::string() const {
+  virtual operator std::string() const {
     return "IRBaseNode()";
   }
 };

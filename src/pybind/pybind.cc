@@ -1,3 +1,4 @@
+#include <arch.h>
 #include <block.h>
 #include <codegen/codegen.h>
 #include <expr.h>
@@ -263,7 +264,8 @@ PYBIND11_MODULE(dominoc, m) {
       .value("Spatial", IterTypeKind::kSpatial)
       .value("Reduce", IterTypeKind::kReduce)
       .value("Unroll", IterTypeKind::kUnroll)
-      .value("Zigzag", IterTypeKind::kZigzag);
+      .value("Zigzag", IterTypeKind::kZigzag)
+      .value("Tensorized", IterTypeKind::kTensorized);
 
   py::class_<IteratorNode, Iterator>(ir_m, "Iterator", pyExpr)
       .def(py::init<Var, Range, IterTypeKind>())
@@ -443,6 +445,22 @@ PYBIND11_MODULE(dominoc, m) {
       .def("compiled", &KernelNode::compiled)
       .def("gen_function", &KernelNode::genFunction)
       .def("gen_signature", &KernelNode::genSignature);
+
+  /// bind architecture classes
+  py::class_<ArchNode, Arch> pyArch(ir_m, "Arch", pyIRBase);
+  pyArch.def(py::init<>());
+
+  py::class_<MemoryLevelNode, MemoryLevel>(ir_m, "MemoryLevel", pyArch)
+      .def(py::init<ConstInt, Block, std::vector<Arch>>())
+      .def_readonly("memory_level", &MemoryLevelNode::memory_level)
+      .def_readonly("block", &MemoryLevelNode::block)
+      .def_readonly("sub_levels", &MemoryLevelNode::sub_levels);
+
+  py::class_<ComputeLevelNode, ComputeLevel>(ir_m, "ComputeLevel", pyArch)
+      .def(py::init<ConstInt, Block, std::vector<Arch>>())
+      .def_readonly("compute_level", &ComputeLevelNode::compute_level)
+      .def_readonly("block", &ComputeLevelNode::block)
+      .def_readonly("sub_levels", &ComputeLevelNode::sub_levels);
 
   /// bind IRPrinter function
   ir_m.def("print_ir", &repr, "Function that prints the IR.");

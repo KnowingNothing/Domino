@@ -211,7 +211,7 @@ class StmtMutator : public IRFunctor<Stmt()> {
   Stmt ImplVisit(Evaluate op) override { return Evaluate::make(VisitExpr(op->expr)); }
 
  public:
-  StmtMutator() : expr_mutator(new ExprMutator()) {}
+  StmtMutator() : expr_mutator(std::make_shared<ExprMutator>()) {}
   StmtMutator(std::shared_ptr<ExprMutator> mutator) : expr_mutator(mutator) {}
   Expr VisitExpr(Expr expr) { return expr_mutator->Visit(expr); }
 
@@ -317,13 +317,88 @@ class BlockMutator : public IRFunctor<Block()> {
   }
 
  public:
-  BlockMutator() : stmt_mutator(new StmtMutator()) {}
+  BlockMutator() : stmt_mutator(std::make_shared<StmtMutator>()) {}
+  BlockMutator(std::shared_ptr<ExprMutator> mutator)
+      : stmt_mutator(std::make_shared<StmtMutator>(mutator)) {}
   BlockMutator(std::shared_ptr<StmtMutator> mutator) : stmt_mutator(mutator) {}
   Expr VisitExpr(Expr expr) { return stmt_mutator->VisitExpr(expr); }
   Stmt VisitStmt(Stmt expr) { return stmt_mutator->Visit(expr); }
 
  protected:
   std::shared_ptr<StmtMutator> stmt_mutator = (nullptr);
+};
+
+class ArchMutator : public IRFunctor<Arch()> {
+ protected:
+  Arch ImplVisit(MemoryLevel op) override {
+    Expr level = VisitExpr(op->memory_level);
+    ConstInt as_int = level.as<ConstIntNode>();
+    ASSERT(as_int.defined());
+    std::vector<Arch> new_sub;
+    for (auto v : op->sub_levels) {
+      new_sub.push_back(Visit(v));
+    }
+    return MemoryLevel::make(as_int, VisitBlock(op->block), new_sub);
+  }
+
+  Arch ImplVisit(ComputeLevel op) override {
+    Expr level = VisitExpr(op->compute_level);
+    ConstInt as_int = level.as<ConstIntNode>();
+    ASSERT(as_int.defined());
+    std::vector<Arch> new_sub;
+    for (auto v : op->sub_levels) {
+      new_sub.push_back(Visit(v));
+    }
+    return ComputeLevel::make(as_int, VisitBlock(op->block), new_sub);
+  }
+
+ public:
+  ArchMutator() : block_mutator(std::make_shared<BlockMutator>()) {}
+  ArchMutator(std::shared_ptr<ExprMutator> mutator)
+      : block_mutator(std::make_shared<BlockMutator>(mutator)) {}
+  ArchMutator(std::shared_ptr<StmtMutator> mutator)
+      : block_mutator(std::make_shared<BlockMutator>(mutator)) {}
+  ArchMutator(std::shared_ptr<BlockMutator> mutator) : block_mutator(mutator) {}
+  Expr VisitExpr(Expr expr) { return block_mutator->VisitExpr(expr); }
+  Stmt VisitStmt(Stmt stmt) { return block_mutator->VisitStmt(stmt); }
+  Block VisitBlock(Block block) { return block_mutator->Visit(block); }
+
+ protected:
+  std::shared_ptr<BlockMutator> block_mutator = (nullptr);
+};
+
+class IRMutator : public IRFunctor<IRBase()> {
+ protected:
+  IRBase ImplVisit(KernelSignature op) override {
+    return KernelSignature::make(op->kernel_name, op->kernel_args, op->scalar_args);
+  }
+
+  IRBase ImplVisit(Kernel op) override {
+    IRBase signature = Visit(op->signature);
+    KernelSignature as_sig = signature.as<KernelSignatureNode>();
+    ASSERT(as_sig.defined());
+    Kernel ret = Kernel::make(as_sig, VisitBlock(op->body));
+    /// FIXME: ugly source copy
+    ret->source = op->source;
+    return ret;
+  }
+
+ public:
+  IRMutator() : arch_mutator(std::make_shared<ArchMutator>()) {}
+  IRMutator(std::shared_ptr<ExprMutator> mutator)
+      : arch_mutator(std::make_shared<ArchMutator>(mutator)) {}
+  IRMutator(std::shared_ptr<StmtMutator> mutator)
+      : arch_mutator(std::make_shared<ArchMutator>(mutator)) {}
+  IRMutator(std::shared_ptr<BlockMutator> mutator)
+      : arch_mutator(std::make_shared<ArchMutator>(mutator)) {}
+  IRMutator(std::shared_ptr<ArchMutator> mutator) : arch_mutator(mutator) {}
+  Expr VisitExpr(Expr expr) { return arch_mutator->VisitExpr(expr); }
+  Stmt VisitStmt(Stmt stmt) { return arch_mutator->VisitStmt(stmt); }
+  Block VisitBlock(Block block) { return arch_mutator->VisitBlock(block); }
+  Arch VisitArch(Arch arch) { return arch_mutator->Visit(arch); }
+
+ protected:
+  std::shared_ptr<ArchMutator> arch_mutator = (nullptr);
 };
 
 }  // namespace domino

@@ -49,6 +49,7 @@ class Array(object):
         return ArrayRef(self.var, indices)
 
     def calculate_slice_indices(self, indices):
+        # FIXME: don't support slices in indices
         if self.origin is None:
             return indices
         origin_indices = []
@@ -60,6 +61,7 @@ class Array(object):
                 start = s.start if s.start is not None else 0
                 step = s.step if s.step is not None else 1
                 idx = start + indices[counter] * step
+                counter += 1
                 origin_indices.append(idx)
             else:
                 origin_indices.append(s)
