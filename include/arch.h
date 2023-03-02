@@ -38,6 +38,18 @@ class MemoryLevelNode : public ArchNode {
     ASSERT(this->block.defined());
   }
 
+  MemoryLevelNode(ConstInt level, Block b, std::initializer_list<Arch> sub)
+      : memory_level(std::move(level)), block(std::move(b)), sub_levels(std::move(sub)) {
+    ASSERT(this->memory_level.defined());
+    ASSERT(this->block.defined());
+  }
+
+  MemoryLevelNode(int level, Block b, std::initializer_list<Arch> sub)
+      : memory_level(ConstInt::make(level)), block(std::move(b)), sub_levels(std::move(sub)) {
+    ASSERT(this->memory_level.defined());
+    ASSERT(this->block.defined());
+  }
+
   ConstInt memory_level;
   Block block;
   std::vector<Arch> sub_levels;
@@ -59,7 +71,20 @@ class ComputeLevelNode : public ArchNode {
     ASSERT(this->block.defined());
   }
 
+  ComputeLevelNode(ConstInt level, Block b, std::initializer_list<Arch> sub)
+      : compute_level(std::move(level)), block(std::move(b)), sub_levels(std::move(sub)) {
+    ASSERT(this->compute_level.defined());
+    ASSERT(this->block.defined());
+  }
+
+  ComputeLevelNode(int level, Block b, std::initializer_list<Arch> sub)
+      : compute_level(ConstInt::make(level)), block(std::move(b)), sub_levels(std::move(sub)) {
+    ASSERT(this->compute_level.defined());
+    ASSERT(this->block.defined());
+  }
+
   ConstInt compute_level;
+
   Block block;
   std::vector<Arch> sub_levels;
 };

@@ -45,7 +45,9 @@ class Ref {
   bool defined() const { return shr_ptr_ != nullptr; }
 
   T& operator*() const {
-    assert(defined());
+    if(!defined()) {
+      throw std::runtime_error("Undefined Ref can't be referenced.");
+    }
     return *shr_ptr_;
   }
 

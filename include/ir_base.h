@@ -16,6 +16,7 @@ typedef Ref<IRBaseNode> IRBase;
 
 std::ostream& operator<<(std::ostream&, IRBase);
 std::string repr(IRBase);
+IRBase replicate(IRBase);
 
 }  // namespace domino
 

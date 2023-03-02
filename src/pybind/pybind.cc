@@ -1,3 +1,4 @@
+#include <analysis/fusion.h>
 #include <arch.h>
 #include <block.h>
 #include <codegen/codegen.h>
@@ -6,6 +7,7 @@
 #include <ir_base.h>
 #include <kernel.h>
 #include <pass/flatten.h>
+#include <pass/prod_consum.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <ref.h>
@@ -21,7 +23,7 @@ namespace domino {
 
 using namespace codegen;
 
-PYBIND11_MODULE(dominoc, m) {
+void bindTypeSystem(py::module_& m) {
   /// bind type_system
   py::enum_<DTypeKind>(m, "DTypeKind")
       .value("Int", DTypeKind::kInt)
@@ -53,7 +55,9 @@ PYBIND11_MODULE(dominoc, m) {
       .def_readonly("type_kind", &DType::type_kind)
       .def_readonly("bits", &DType::bits)
       .def_readonly("lane", &DType::lane);
+}
 
+void bindIR(py::module_& m) {
   /// submodule for IR
   py::module_ ir_m = m.def_submodule("ir", "IR Nodes of Domino");
 
@@ -453,14 +457,14 @@ PYBIND11_MODULE(dominoc, m) {
   py::class_<MemoryLevelNode, MemoryLevel>(ir_m, "MemoryLevel", pyArch)
       .def(py::init<ConstInt, Block, std::vector<Arch>>())
       .def_readonly("memory_level", &MemoryLevelNode::memory_level)
-      .def_readonly("block", &MemoryLevelNode::block)
-      .def_readonly("sub_levels", &MemoryLevelNode::sub_levels);
+      .def_readwrite("block", &MemoryLevelNode::block)
+      .def_readwrite("sub_levels", &MemoryLevelNode::sub_levels);
 
   py::class_<ComputeLevelNode, ComputeLevel>(ir_m, "ComputeLevel", pyArch)
       .def(py::init<ConstInt, Block, std::vector<Arch>>())
       .def_readonly("compute_level", &ComputeLevelNode::compute_level)
-      .def_readonly("block", &ComputeLevelNode::block)
-      .def_readonly("sub_levels", &ComputeLevelNode::sub_levels);
+      .def_readwrite("block", &ComputeLevelNode::block)
+      .def_readwrite("sub_levels", &ComputeLevelNode::sub_levels);
 
   /// bind IRPrinter function
   ir_m.def("print_ir", &repr, "Function that prints the IR.");
@@ -504,6 +508,11 @@ PYBIND11_MODULE(dominoc, m) {
   ir_m.def("simplify_expr", &SimplifyExpr,
            "Function that simplifies expressions according to a list of inner rules.");
 
+  /// bind replicate
+  ir_m.def("replicate", &replicate, "Replicate an IR exactly.");
+}
+
+void bindCodeGen(py::module_& m) {
   /// submodule for CodeGen
   py::module_ gen_m = m.def_submodule("codegen", "Codegen of Domino");
 
@@ -512,12 +521,46 @@ PYBIND11_MODULE(dominoc, m) {
 
   /// bind codegen_arm_m
   gen_m.def("codegen_arm_m", &codegen_arm_m, "Codegen function for ARM Cortex M processor.");
+}
 
+void bindPass(py::module_& m) {
   /// submodule for pass
   py::module_ pass_m = m.def_submodule("passes", "Pass in Domino");
 
   /// bind flatten_array_access
   pass_m.def("flatten_array_access", &pass::FlattenArrayAccess, "Flatten array access.");
+
+  /// bind get_input_tensor_vars
+  pass_m.def("get_input_tensor_vars", &pass::GetInputTensorVars, "Get the input tensor vars.");
+}
+
+void bindAnalysis(py::module_& m) {
+  py::module_ ana_m = m.def_submodule("analysis", "Analysis in Domino");
+
+  py::class_<analysis::MemoryLevelTreeNode, analysis::MemoryLevelTree> pyMemLevelTree(
+      ana_m, "MemoryLevelTree");
+  pyMemLevelTree.def(py::init<std::vector<int>, Var>())
+      .def("cut", &analysis::MemoryLevelTreeNode::Cut)
+      .def("merge", &analysis::MemoryLevelTreeNode::Merge)
+      .def_readonly("root", &analysis::MemoryLevelTreeNode::root)
+      .def_readonly("merged", &analysis::MemoryLevelTreeNode::merged)
+      .def_readonly("initial_levels", &analysis::MemoryLevelTreeNode::initial_levels)
+      .def_readonly("tensor_var", &analysis::MemoryLevelTreeNode::tensor_var);
+
+  ana_m.def("generate_merged_memory_level_trees", &analysis::generateMergedMemoryLevelTrees,
+            "Generate possible merged memory level trees.");
+}
+
+PYBIND11_MODULE(dominoc, m) {
+  bindTypeSystem(m);
+
+  bindIR(m);
+
+  bindCodeGen(m);
+
+  bindPass(m);
+
+  bindAnalysis(m);
 }
 
 }  // namespace domino

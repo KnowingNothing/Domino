@@ -6,3 +6,4 @@ from .scalar_expr import *
 from .simplify import *
 from .stmt import *
 from .kernel import *
+from .block import *

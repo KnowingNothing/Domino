@@ -11,6 +11,12 @@ class Arch(ir.Arch):
     def __init__(self):
         ir.Arch.__init__(self)
 
+    def is_memory_level(self):
+        return isinstance(self, ir.MemoryLevel)
+    
+    def is_compute_level(self):
+        return isinstance(self, ir.ComputeLevel)
+
 
 class MemoryLevel(ir.MemoryLevel, Arch):
     def __init__(self, level: int, block: Block, sub_levels: List[Arch]):

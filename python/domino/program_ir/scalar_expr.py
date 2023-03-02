@@ -16,7 +16,7 @@ __all__ = [
     "Select",
     "Range", "ExprList",
     "CondAll", "CondAny",
-    "ConstInt", "ConstUInt", "ConstFloat", "ConstBFloat", "ConstTFloat", "ConstString", "make_const",
+    "ConstInt", "ConstUInt", "ConstFloat", "ConstBFloat", "ConstTFloat", "ConstString", "make_const", "const",
     "Var", "ConstVar", "IterTypeKind", "Iterator", "NdLoad", "Load", "MapVar", "Slice", "MemSlice", "Call",
     "PackValue",
     "_to_expr", "cast", "pack_value", "clip", "sqrt", "exp"
@@ -784,6 +784,9 @@ def make_const(value, dtype):
         return ConstString(value)
     else:
         raise NotImplementedError(f"Can't make const {dtype}.")
+
+
+const = make_const
 
 
 def cast(dtype, value):

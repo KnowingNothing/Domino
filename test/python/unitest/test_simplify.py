@@ -41,7 +41,7 @@ def test_get_expr_simplify_match_patterns_1():
     target = (Var("int32", "b") + Var("int32", "b")) * 1
     res = get_expr_simplify_match_patterns(target, pattern)
     assert str(
-        res) == "{Var(Const(a, string), int32): Add(int32, Var(Const(b, string), int32), Var(Const(b, string), int32))}"
+        res) == "{Var(a, int32): Add(int32, Var(b, int32), Var(b, int32))}"
 
 
 def test_get_expr_simplify_match_patterns_2():

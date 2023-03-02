@@ -185,6 +185,20 @@ class ExprMutator : public IRFunctor<Expr()> {
     ASSERT(as_list.defined());
     return PackValue::make(op->dtype, as_list);
   }
+
+ public:
+  Expr Visit(IRBase op) override {
+    if (visit_cache_.count(op)) {
+      return visit_cache_.at(op);
+    } else {
+      Expr ret = IRFunctor<Expr()>::Visit(op);
+      visit_cache_[op] = ret;
+      return ret;
+    }
+  }
+
+ private:
+  std::unordered_map<IRBase, Expr> visit_cache_;
 };
 
 class StmtMutator : public IRFunctor<Stmt()> {
@@ -217,6 +231,20 @@ class StmtMutator : public IRFunctor<Stmt()> {
 
  protected:
   std::shared_ptr<ExprMutator> expr_mutator = (nullptr);
+
+ public:
+  Stmt Visit(IRBase op) override {
+    if (visit_cache_.count(op)) {
+      return visit_cache_.at(op);
+    } else {
+      Stmt ret = IRFunctor<Stmt()>::Visit(op);
+      visit_cache_[op] = ret;
+      return ret;
+    }
+  }
+
+ private:
+  std::unordered_map<IRBase, Stmt> visit_cache_;
 };
 
 class BlockMutator : public IRFunctor<Block()> {
@@ -326,6 +354,20 @@ class BlockMutator : public IRFunctor<Block()> {
 
  protected:
   std::shared_ptr<StmtMutator> stmt_mutator = (nullptr);
+
+ public:
+  Block Visit(IRBase op) override {
+    if (visit_cache_.count(op)) {
+      return visit_cache_.at(op);
+    } else {
+      Block ret = IRFunctor<Block()>::Visit(op);
+      visit_cache_[op] = ret;
+      return ret;
+    }
+  }
+
+ private:
+  std::unordered_map<IRBase, Block> visit_cache_;
 };
 
 class ArchMutator : public IRFunctor<Arch()> {
@@ -365,6 +407,20 @@ class ArchMutator : public IRFunctor<Arch()> {
 
  protected:
   std::shared_ptr<BlockMutator> block_mutator = (nullptr);
+
+ public:
+  Arch Visit(IRBase op) override {
+    if (visit_cache_.count(op)) {
+      return visit_cache_.at(op);
+    } else {
+      Arch ret = IRFunctor<Arch()>::Visit(op);
+      visit_cache_[op] = ret;
+      return ret;
+    }
+  }
+
+ private:
+  std::unordered_map<IRBase, Arch> visit_cache_;
 };
 
 class IRMutator : public IRFunctor<IRBase()> {
@@ -399,6 +455,31 @@ class IRMutator : public IRFunctor<IRBase()> {
 
  protected:
   std::shared_ptr<ArchMutator> arch_mutator = (nullptr);
+
+ public:
+  IRBase Visit(IRBase op) override {
+    if (visit_cache_.count(op)) {
+      return visit_cache_.at(op);
+    } else {
+      IRBase ret;
+      if (op.as<ExprNode>().defined()) {
+        ret = VisitExpr(op.as<ExprNode>());
+      } else if (op.as<StmtNode>().defined()) {
+        ret = VisitStmt(op.as<StmtNode>());
+      } else if (op.as<BlockNode>().defined()) {
+        ret = VisitBlock(op.as<BlockNode>());
+      } else if (op.as<ArchNode>().defined()) {
+        ret = VisitArch(op.as<ArchNode>());
+      } else {
+        ret = IRFunctor<IRBase()>::Visit(op);
+      }
+      visit_cache_[op] = ret;
+      return ret;
+    }
+  }
+
+ private:
+  std::unordered_map<IRBase, IRBase> visit_cache_;
 };
 
 }  // namespace domino

@@ -1,30 +1,57 @@
 from ..type_system import DType
-from .scalar_expr import Expr, Var, ConstVar, ConstInt, Range, Iterator, IterTypeKind, _to_expr, NdLoad, MemRef
+from .scalar_expr import (
+    Expr, Var, ConstVar, ConstInt, Range, Iterator, IterTypeKind,
+    _to_expr, NdLoad, MemRef)
 from .functional import print_ir
-from typing import List, Union, Any
+from .block import _to_block
+from ..passes import get_input_tensor_vars, ProdConsumGraph
+from typing import List, Union, Any, Optional
 
 
-__all__ = ["Tensor", "ConstTensor", "Loop", "SpatialLoop",
-           "ReduceLoop", "TensorizedLoop", "SLoop", "RLoop", "TLoop"]
+__all__ = ["ReduceOp", "ElemOp", "Tensor", "ConstTensor", "Loop", "SpatialLoop",
+           "ReduceLoop", "TensorizedLoop", "SLoop", "RLoop", "TLoop", "make_prod_consum_graph"]
+
+
+class ComputeOp(object):
+    pass
+
+
+class ReduceOp(ComputeOp):
+    def __init__(self, kind: str) -> None:
+        assert kind in ["sum", "max", "min"]
+        self.kind = kind
+
+    def __str__(self):
+        return self.kind
+
+
+class ElemOp(ComputeOp):
+    def __str__(self):
+        return "elem"
 
 
 class Tensor(object):
     name_cache = {}
+    tensor_cache = {}
 
     def __init__(
             self,
             shape: List[Union[int, Expr]],
-            name: str = "",
+            name: str = "T",
             dtype: Union[DType, str] = "float32"):
         self.shape = shape
         self.name = Tensor._gen_name(name)
         self.dtype = dtype
         self.var = Var(self.dtype, self.name)
+        self.init: Optional[Compute] = None
+        self.updates: List[Compute] = []
+        # FIXME: how to avoid global tensor cache?
+        self.tensor_cache[self.var] = self
 
     def is_const(self):
         return False
 
-    def __getitem__(self, keys):
+    def _parse_keys(self, keys):
         new_keys = []
         new_shape = []
         for k, s in zip(keys, self.shape):
@@ -56,7 +83,45 @@ class Tensor(object):
                 new_shape.append((stop - start)//step)
             else:
                 new_keys.append(_to_expr(k))
+        return new_shape, new_keys
+
+    def __getitem__(self, keys):
+        new_shape, new_keys = self._parse_keys(keys)
         return TensorView(new_shape, self, new_keys)
+
+    def __setitem__(self, keys, value):
+        new_shape, new_keys = self._parse_keys(keys)
+        view = TensorView(new_shape, self, new_keys)
+        if isinstance(value, TensorView):
+            value = value.as_expr()
+        else:
+            value = _to_expr(value)
+        compute = Compute(view, value, ElemOp())
+        if self.init is None:
+            self.init = compute
+        else:
+            self.updates.append(compute)
+
+    def Init(self, keys, value):
+        assert self.init is None
+        new_shape, new_keys = self._parse_keys(keys)
+        view = TensorView(new_shape, self, new_keys)
+        if isinstance(value, TensorView):
+            value = value.as_expr()
+        else:
+            value = _to_expr(value)
+        compute = Compute(view, value, ElemOp())
+        self.init = compute
+
+    def Update(self, keys, value, op: "ComputeOp" = ElemOp()):
+        new_shape, new_keys = self._parse_keys(keys)
+        view = TensorView(new_shape, self, new_keys)
+        if isinstance(value, TensorView):
+            value = value.as_expr()
+        else:
+            value = _to_expr(value)
+        compute = Compute(view, value, op)
+        self.updates.append(compute)
 
     def __str__(self):
         shape_str = ",".join([print_ir(x, print_out=False) if isinstance(
@@ -104,7 +169,7 @@ class TensorView(object):
             self.indices = simplified_view.indices
         self.name = f"view_{self.tensor_or_view.name}"
 
-    def __getitem__(self, keys):
+    def _parse_keys(self, keys):
         new_keys = []
         new_shape = []
         for k, s in zip(keys, self.shape):
@@ -136,6 +201,10 @@ class TensorView(object):
                 new_shape.append((stop - start)//step)
             else:
                 new_keys.append(_to_expr(k))
+        return new_shape, new_keys
+
+    def __getitem__(self, keys):
+        new_shape, new_keys = self._parse_keys(keys)
         return TensorView(new_shape, self, new_keys)
 
     def _resolve(self, shape, indices):
@@ -161,6 +230,12 @@ class TensorView(object):
 
     def is_scalar(self):
         return len(self.shape) == 0
+
+    def as_expr(self):
+        if self.is_scalar():
+            return NdLoad(MemRef(self.tensor_or_view.var, 0), self.indices)
+        else:
+            raise RuntimeError("Can't convert TensorView with slice to Expr.")
 
     def __add__(self, other):
         if isinstance(other, TensorView):
@@ -271,10 +346,41 @@ class TensorView(object):
         return f"TensorView(tensor={self.tensor_or_view.name}, shape=[{shape}], [{indices}])"
 
 
+class Compute(object):
+    def __init__(self, tensor_view: TensorView, value: Expr, operation: ComputeOp) -> None:
+        self.tensor_view = tensor_view
+        assert isinstance(value, Expr)
+        self.value = value
+        self.operation = operation
+
+    def input_tensors(self):
+        vars = get_input_tensor_vars(self.value)
+        visit = set()
+        ret = []
+        for v in vars:
+            if v not in visit:
+                ret.append(Tensor.tensor_cache[v])
+                visit.add(v)
+        return ret
+
+    def __str__(self):
+        if isinstance(self.operation, ReduceOp):
+            if self.operation.kind == "sum":
+                return f"{self.tensor_view} += {print_ir(self.value, print_out=False)}"
+            elif self.operation.kind == "max":
+                return f"{self.tensor_view} = max({print_ir(self.tensor_view.as_expr(), print_out=False)}, {print_ir(self.value, print_out=False)})"
+            elif self.operation.kind == "min":
+                return f"{self.tensor_view} = min({print_ir(self.tensor_view.as_expr(), print_out=False)}, {print_ir(self.value, print_out=False)})"
+            else:
+                raise RuntimeError(f"Unkonwn ReduceOp: {self.operation.kind}")
+        else:
+            return f"{self.tensor_view} = {print_ir(self.value, print_out=False)}"
+
+
 class Loop(object):
     name_cache = {}
 
-    def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name="", iter_kind=IterTypeKind.Spatial):
+    def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name="l", iter_kind=IterTypeKind.Spatial):
         if isinstance(r, int):
             self.dom = Range(0, r, 1)
         elif isinstance(r, (list, tuple)):
@@ -406,3 +512,7 @@ class TensorizedLoop(Loop):
 
 
 TLoop = TensorizedLoop
+
+
+def make_prod_consum_graph(tensor):
+    return ProdConsumGraph(tensor)

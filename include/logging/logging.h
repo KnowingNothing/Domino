@@ -29,7 +29,7 @@ class LazyLogging {
   LazyLogging(LogLevel level, bool do_print = true, std::string file = __FILE__,
               int lineno = __LINE__)
       : log_level(level), do_print(do_print), file_(file), lineno_(lineno) {}
-  ~LazyLogging() {
+  ~LazyLogging() noexcept {
     std::chrono::milliseconds ms = current_time();
     if (do_print) {
       switch (log_level) {
@@ -46,7 +46,8 @@ class LazyLogging {
           std::cerr << "Domino: [Error] "
                     << "[time=" << ms.count() << "] " << file_ << " line:" << lineno_ << " "
                     << oss.str() << std::flush;
-          abort();
+          // abort();
+          std::terminate();
         } break;
         default:
           break;
@@ -91,4 +92,4 @@ class LazyLogging {
 
 }  // namespace domino
 
-#endif // DOMINO_DEBUG_H
+#endif  // DOMINO_DEBUG_H
