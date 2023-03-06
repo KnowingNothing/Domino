@@ -488,7 +488,6 @@ class ExprSimplifier : public ExprMutator {
   static std::vector<ExprSimplifyPattern> patterns_;
 };
 
-std::vector<ExprSimplifyPattern> ExprSimplifier::patterns_;
 //  = {
 //   ExprSimplifyPattern(var("int32") + const_int(0, 32, 1), var("int32")),
 //   ExprSimplifyPattern(const_int(0, 32, 1) + var("int32"), var("int32"))

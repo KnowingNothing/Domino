@@ -1,6 +1,7 @@
 #include <simplify.h>
 
 namespace domino {
+std::vector<ExprSimplifyPattern> ExprSimplifier::patterns_;
 
 bool ExprSimplifyMatchPattern(Expr target, Expr pattern) {
   ExprSimplifyPatternMatcher matcher;

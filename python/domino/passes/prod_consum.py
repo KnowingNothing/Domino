@@ -3,11 +3,16 @@ import networkx as nx
 from functools import reduce
 
 
-__all__ = ["get_input_tensor_vars", "ProdConsumGraph"]
+__all__ = ["get_input_tensor_vars",
+           "ProdConsumGraph", "get_input_tensor_indices"]
 
 
 def get_input_tensor_vars(expr):
     return passes.get_input_tensor_vars(expr)
+
+
+def get_input_tensor_indices(expr, tensor_var):
+    return passes.get_input_tensor_indices(expr, tensor_var)
 
 
 class ProdConsumGraph(object):
@@ -59,7 +64,7 @@ class ProdConsumGraph(object):
             for r in reads:
                 g.add_edge(self.node_to_id[node], self.node_to_id[r])
         return g
-    
+
     def num_nodes(self):
         return len(self.nodes)
 

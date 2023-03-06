@@ -35,12 +35,14 @@ class LazyLogging {
       switch (log_level) {
         case LogLevel::tINFO:
           std::cerr << "Domino: [Info] "
-                    << "[time=" << ms.count() << "] " << oss.str() << std::flush;
+                    << "[time=" << ms.count() << "] " << oss.str() << std::endl
+                    << std::flush;
           break;
         case LogLevel::tWARNING:
           std::cerr << "Domino: [Warning] "
                     << "[time=" << ms.count() << "] file:" << file_ << " line:" << lineno_ << " "
-                    << oss.str() << std::flush;
+                    << oss.str() << std::endl
+                    << std::flush;
           break;
         case LogLevel::tERROR: {
           std::cerr << "Domino: [Error] "
@@ -68,14 +70,8 @@ class LazyLogging {
   }
 };
 
-#define WARN(cond)                                                      \
-  ([&]() -> LazyLogging {                                               \
-    if (!(cond)) {                                                      \
-      return LazyLogging(LogLevel::tWARNING, true, __FILE__, __LINE__); \
-    } else {                                                            \
-      return LazyLogging(LogLevel::tINFO, false, __FILE__, __LINE__);   \
-    }                                                                   \
-  }())
+#define WARN \
+  ([&]() -> LazyLogging { return LazyLogging(LogLevel::tWARNING, true, __FILE__, __LINE__); }())
 
 #define ASSERT(cond)                                                  \
   ([&]() -> LazyLogging {                                             \

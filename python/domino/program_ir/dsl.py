@@ -1,10 +1,12 @@
+from dominoc import ir
 from ..type_system import DType
 from .scalar_expr import (
     Expr, Var, ConstVar, ConstInt, Range, Iterator, IterTypeKind,
     _to_expr, NdLoad, MemRef)
 from .functional import print_ir
 from .block import _to_block
-from ..passes import get_input_tensor_vars, ProdConsumGraph
+from ..passes import (get_input_tensor_vars, ProdConsumGraph,
+                      get_input_tensor_indices)
 from typing import List, Union, Any, Optional
 
 
@@ -51,7 +53,7 @@ class Tensor(object):
     def is_const(self):
         return False
 
-    def _parse_keys(self, keys):
+    def _parse_keys(self, keys, simple_indices=False):
         new_keys = []
         new_shape = []
         for k, s in zip(keys, self.shape):
@@ -82,6 +84,9 @@ class Tensor(object):
                 new_keys.append(slice(start, stop, step))
                 new_shape.append((stop - start)//step)
             else:
+                if simple_indices:
+                    raise RuntimeError(
+                        f"Expect simple indices but get {print_ir(_to_expr(k), print_out=False)}")
                 new_keys.append(_to_expr(k))
         return new_shape, new_keys
 
@@ -90,13 +95,13 @@ class Tensor(object):
         return TensorView(new_shape, self, new_keys)
 
     def __setitem__(self, keys, value):
-        new_shape, new_keys = self._parse_keys(keys)
+        new_shape, new_keys = self._parse_keys(keys, simple_indices=True)
         view = TensorView(new_shape, self, new_keys)
         if isinstance(value, TensorView):
             value = value.as_expr()
         else:
             value = _to_expr(value)
-        compute = Compute(view, value, ElemOp())
+        compute = Compute(view, value, ElemOp(), [])
         if self.init is None:
             self.init = compute
         else:
@@ -104,23 +109,27 @@ class Tensor(object):
 
     def Init(self, keys, value):
         assert self.init is None
-        new_shape, new_keys = self._parse_keys(keys)
+        new_shape, new_keys = self._parse_keys(keys, simple_indices=True)
         view = TensorView(new_shape, self, new_keys)
         if isinstance(value, TensorView):
             value = value.as_expr()
         else:
             value = _to_expr(value)
-        compute = Compute(view, value, ElemOp())
+        compute = Compute(view, value, ElemOp(), [])
         self.init = compute
 
-    def Update(self, keys, value, op: "ComputeOp" = ElemOp()):
-        new_shape, new_keys = self._parse_keys(keys)
+    def Update(self, keys, value, op: "ComputeOp" = ElemOp(), reduce_axis: Optional[List["Loop"]] = None):
+        new_shape, new_keys = self._parse_keys(keys, simple_indices=True)
+        reduce_axis = [] if reduce_axis is None else [x.var for x in reduce_axis]
+        if isinstance(op, ReduceOp):
+            assert len(
+                reduce_axis) > 0, "ReduceOp expects at least 1 reduce_axis."
         view = TensorView(new_shape, self, new_keys)
         if isinstance(value, TensorView):
             value = value.as_expr()
         else:
             value = _to_expr(value)
-        compute = Compute(view, value, op)
+        compute = Compute(view, value, op, reduce_axis)
         self.updates.append(compute)
 
     def __str__(self):
@@ -347,11 +356,12 @@ class TensorView(object):
 
 
 class Compute(object):
-    def __init__(self, tensor_view: TensorView, value: Expr, operation: ComputeOp) -> None:
+    def __init__(self, tensor_view: TensorView, value: Expr, operation: ComputeOp, reduce_axis: List[Var]) -> None:
         self.tensor_view = tensor_view
         assert isinstance(value, Expr)
         self.value = value
         self.operation = operation
+        self.reduce_axis = reduce_axis
 
     def input_tensors(self):
         vars = get_input_tensor_vars(self.value)
@@ -362,6 +372,43 @@ class Compute(object):
                 ret.append(Tensor.tensor_cache[v])
                 visit.add(v)
         return ret
+
+    def get_tensor_indices(self, tensor: Union[Tensor, ir.Var]):
+        if isinstance(tensor, ir.Var):
+            tensor = Tensor.tensor_cache[tensor]
+        assert isinstance(tensor, Tensor)
+        return get_input_tensor_indices(self.value, tensor.var)
+
+    def all_loops(self):
+        visit = set()
+        ret = []
+        for l in self.tensor_view.indices:
+            if l not in visit:
+                assert l in Loop.loop_cache, f"The index {print_ir(l, print_out=False)} is not a simple Var or the loop Var is not cached for some reason."
+                ret.append(Loop.loop_cache[l])
+                visit.add(l)
+        for l in self.reduce_axis:
+            if l not in visit:
+                assert l in Loop.loop_cache, f"The index {print_ir(l, print_out=False)} is not a simple Var or the loop Var is not cached for some reason."
+                ret.append(Loop.loop_cache[l])
+                visit.add(l)
+        return ret
+
+    def reduce_loops(self):
+        return [Loop.loop_cache[v] for v in self.reduce_axis]
+    
+    def spatial_loops(self):
+        visit = set()
+        ret = []
+        for l in self.tensor_view.indices:
+            if l not in visit:
+                assert l in Loop.loop_cache, f"The index {print_ir(l, print_out=False)} is not a simple Var or the loop Var is not cached for some reason."
+                ret.append(Loop.loop_cache[l])
+                visit.add(l)
+        return ret
+
+    def has_reduce(self):
+        return isinstance(self.operation, ReduceOp)
 
     def __str__(self):
         if isinstance(self.operation, ReduceOp):
@@ -379,6 +426,7 @@ class Compute(object):
 
 class Loop(object):
     name_cache = {}
+    loop_cache = {}
 
     def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name="l", iter_kind=IterTypeKind.Spatial):
         if isinstance(r, int):
@@ -386,22 +434,26 @@ class Loop(object):
         elif isinstance(r, (list, tuple)):
             assert len(r) == 2 or len(r) == 3
             if len(r) == 2:
-                self.dom = Range(r[0], r[1], 1)
+                self.dom = Range(r[0], r[1]-r[0], 1)
             elif len(r) == 3:
-                self.dom = Range(r[0], r[1], r[2])
+                self.dom = Range(r[0], (r[1]-r[0])//r[2], r[2])
         elif isinstance(r, range):
             start = 0 if r.start is None else r.start
             step = 1 if r.step is None else r.step
             assert r.stop is not None
-            self.dom = Range(start, r.stop, step)
+            self.dom = Range(start, (r.stop-start)//step, step)
         else:
             raise ValueError(
                 f"Can't use {r} of type {type(r)} to initialize Loop")
 
         self.name = Loop._gen_name(name)
         self.iter_kind = iter_kind
-        self.var = Var("int32", name)
+        self.var = Var("int32", self.name)
+        self.loop_cache[self.var] = self
         self.iterator = Iterator(self.var, self.dom, iter_kind)
+
+    def iter_type(self):
+        return self.iter_kind
 
     @classmethod
     def _gen_name(cls, hint: str):
@@ -489,9 +541,12 @@ class Loop(object):
     def __repr__(self):
         return str(self)
 
+    def __hash__(self):
+        return hash(self.var)
+
 
 class SpatialLoop(Loop):
-    def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name=""):
+    def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name="s"):
         super(SpatialLoop, self).__init__(r, name, IterTypeKind.Spatial)
 
 
@@ -499,7 +554,7 @@ SLoop = SpatialLoop
 
 
 class ReduceLoop(Loop):
-    def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name=""):
+    def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name="r"):
         super(ReduceLoop, self).__init__(r, name, IterTypeKind.Reduce)
 
 
@@ -507,7 +562,7 @@ RLoop = ReduceLoop
 
 
 class TensorizedLoop(Loop):
-    def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name=""):
+    def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name="t"):
         super(TensorizedLoop, self).__init__(r, name, IterTypeKind.Tensorized)
 
 

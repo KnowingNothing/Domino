@@ -532,6 +532,10 @@ void bindPass(py::module_& m) {
 
   /// bind get_input_tensor_vars
   pass_m.def("get_input_tensor_vars", &pass::GetInputTensorVars, "Get the input tensor vars.");
+
+  /// bind get_input_tensor_indices
+  pass_m.def("get_input_tensor_indices", &pass::GetInputTensorIndices,
+             "Get the indics of an input tensor.");
 }
 
 void bindAnalysis(py::module_& m) {
@@ -539,13 +543,19 @@ void bindAnalysis(py::module_& m) {
 
   py::class_<analysis::MemoryLevelTreeNode, analysis::MemoryLevelTree> pyMemLevelTree(
       ana_m, "MemoryLevelTree");
-  pyMemLevelTree.def(py::init<std::vector<int>, Var>())
+  pyMemLevelTree.def(py::init<std::vector<int>, Var, std::unordered_map<Var, Range>>())
       .def("cut", &analysis::MemoryLevelTreeNode::Cut)
       .def("merge", &analysis::MemoryLevelTreeNode::Merge)
+      .def("get_available_levels", &analysis::MemoryLevelTreeNode::GetAvailableLevels)
+      .def("memory_tiling", &analysis::MemoryLevelTreeNode::MemoryTiling)
+      .def("least_common_ancestor", &analysis::MemoryLevelTreeNode::LeastCommonAncestor)
+      .def("set_bounds", &analysis::MemoryLevelTreeNode::SetBounds)
       .def_readonly("root", &analysis::MemoryLevelTreeNode::root)
       .def_readonly("merged", &analysis::MemoryLevelTreeNode::merged)
       .def_readonly("initial_levels", &analysis::MemoryLevelTreeNode::initial_levels)
-      .def_readonly("tensor_var", &analysis::MemoryLevelTreeNode::tensor_var);
+      .def_readonly("tensor_var", &analysis::MemoryLevelTreeNode::tensor_var)
+      .def_readonly("var_map", &analysis::MemoryLevelTreeNode::var_map)
+      .def_readonly("bounds", &analysis::MemoryLevelTreeNode::bounds);
 
   ana_m.def("generate_merged_memory_level_trees", &analysis::generateMergedMemoryLevelTrees,
             "Generate possible merged memory level trees.");

@@ -1,164 +1,17 @@
 from dominoc import ir, analysis
 from ..program_ir import (
-    ComputeLevel, MemoryLevel, Evaluate, Tensor,
-    make_prod_consum_graph, print_ir)
-from typing import List
+    ComputeLevel, MemoryLevel, Evaluate, Tensor, Var, Loop, Iterator, Range,
+    make_prod_consum_graph, print_ir, simplify_expr, substitute_expr)
+from ..passes import ProdConsumGraph
+from typing import List, Dict
 import queue
+import math
+from functools import lru_cache
 
-__all__ = ["MemoryLevelTree", "generate_merged_memory_level_trees"]
+__all__ = ["MemoryLevelTree", "generate_merged_memory_level_trees",
+           "memory_level_tree_tiling", "infer_producer_shape",
+           "generate_tile_tensor_computation_space"]
 
-
-# class MemoryLevelTree(object):
-#     def __init__(self) -> None:
-#         self.root = None
-#         self.merged = False
-#         self.initial_levels = []  # only for non-merged tree
-#         self.tensor = None
-
-#     def reset(self):
-#         self.root = None
-#         self.merged = False
-#         self.initial_levels = []
-#         self.tensor = None
-
-#     def _copy(self):
-#         new_tree = MemoryLevelTree()
-#         new_tree.root = ir.replicate(self.root)
-#         new_tree.merged = self.merged
-#         new_tree.initial_levels = self.initial_levels
-#         new_tree.tensor = self.tensor
-#         return new_tree
-
-#     def grown(self):
-#         return self.root is not None and self.tensor is not None
-
-#     def _grow(self, levels: List[int], tensor: Tensor):
-#         if len(levels) == 0:
-#             return None
-#         leaf = tensor.var
-#         cur_level = ComputeLevel(levels[0], leaf, [])
-#         for level in levels:
-#             cur_level = MemoryLevel(level, Evaluate(0), [cur_level])
-#         return cur_level
-
-#     def grow(self, levels: List[int], tensor: Tensor):
-#         assert not self.grown(), "A grown tree can't grow anymore"
-#         self.initial_levels = levels
-#         self.tensor = tensor
-#         self.root = self._grow(levels, tensor)
-
-#     def cut(self, level: int):
-#         new_tree = self._copy()
-#         assert new_tree.root is not None and not new_tree.merged
-#         while isinstance(new_tree.root, ir.MemoryLevel):
-#             if new_tree.root.memory_level.value == level:
-#                 new_tree.root = new_tree.root.sub_levels[0]
-#                 break
-#             new_tree.root = new_tree.root.sub_levels[0]
-#         return new_tree
-
-#     def _find_node(self, tensor: Tensor, level: int):
-#         ans = None
-
-#         def helper(node):
-#             nonlocal ans
-#             if node is None or ans is not None:
-#                 return
-#             has_tensor = False
-#             # FIXME: ugly code to cast to Var
-#             if hasattr(node.block, "get_stmt"):
-#                 stmt = node.block.get_stmt()
-#                 if hasattr(stmt, "expr"):
-#                     expr = stmt.expr
-#                     if tensor.var.same_as(expr):
-#                         has_tensor = True
-#             for sub in node.sub_levels:
-#                 ret = helper(sub)
-#                 has_tensor = has_tensor or ret
-#             if has_tensor and hasattr(node, "memory_level") and node.memory_level.value == level:
-#                 ans = node
-#             return has_tensor
-#         helper(self.root)
-#         return ans
-
-#     def merge(self, other: "MemoryLevelTree", tensor: Tensor, level: int):
-#         """Self is main tree, other is secondary tree"""
-#         assert not other.merged, "Can't merge a complex tree to other trees"
-#         new_tree = self._copy()
-#         node = new_tree._find_node(tensor, level)
-#         assert node is not None, "Can't find the node to insert"
-#         other = other.cut(level)
-#         node.sub_levels = [other.root] + node.sub_levels
-#         return new_tree
-
-#     def _make_levels(self):
-#         levels = {}
-#         visit = set()
-#         q = queue.Queue()
-#         q.put((self.root, 0))
-#         while not q.empty():
-#             cur, cur_level = q.get()
-#             if cur is not None:
-#                 if cur_level not in levels:
-#                     levels[cur_level] = []
-#                 levels[cur_level].append(cur)
-#                 for n in cur.sub_levels:
-#                     assert n not in visit, "Duplicated level in architecture!"
-#                     q.put((n, cur_level + 1))
-#         return levels
-
-#     def pretty_print(self):
-#         """Function for debug print"""
-#         # FIXME: this function is not written correctly...
-#         indents = {}
-
-#         def helper1(indent, cur_node):
-#             if cur_node is None:
-#                 return indent
-#             indents[cur_node] = indent
-#             child_indent = indent
-#             child_size = 0
-#             for sub in cur_node.sub_levels:
-#                 child_size = helper1(child_indent, sub)
-#                 child_indent += child_size
-#             return max(child_indent - indent, 1)
-
-#         def helper2(node):
-#             if isinstance(node, ir.MemoryLevel):
-#                 return f"mem@L{node.memory_level.value}"
-#             elif isinstance(node, ir.ComputeLevel):
-#                 line = print_ir(node.block, print_out=False)
-#                 return f"comp {line[:5]}"
-#             else:
-#                 raise RuntimeError(f"{type(node)}, {node}")
-
-#         helper1(0, self.root)
-
-#         levels = self._make_levels()
-#         num_levels = len(levels)
-#         for level_id in range(num_levels):
-#             level = levels[level_id]
-#             line = ""
-#             subline = ""
-#             cur_indent = 0
-#             for node in level:
-#                 indent = indents[node]
-#                 for i in range(cur_indent, indent):
-#                     line += " " * 10
-#                     subline += " " * 10
-#                 subline += " " * 3 + "|" + " " * 6
-#                 line += "{:10}".format(helper2(node))
-#                 max_right = indent
-#                 for child in node.sub_levels:
-#                     max_right = max(max_right, indents[child])
-#                 for i in range(indent, max_right):
-#                     if i < max_right - 1:
-#                         line += "-" * 10
-#                     else:
-#                         line += "-" * 5 + " " * 5
-#                 cur_indent = max_right
-#             print(subline)
-#             print(line)
 
 MemoryLevelTree = analysis.MemoryLevelTree
 
@@ -178,14 +31,164 @@ def generate_merged_memory_level_trees(root_tensor: Tensor, levels: List[int]):
     graph = make_prod_consum_graph(root_tensor)
     tensors = list(reversed(graph.nodes))
     tensor_vars = [t.var for t in tensors]
+    initial_bounds = []
+    for t in tensor_vars:
+        tensor = Tensor.tensor_cache[t]
+        if tensor.init is not None:
+            if len(tensor.updates):
+                compute = tensor.updates[0]
+            else:
+                compute = tensor.init
+            initial_bounds.append({l.var: l.dom for l in compute.all_loops()})
+        else:
+            initial_bounds.append({})
     masks = [t.init is not None for t in tensors]
     # init_trees = [MemoryLevelTree(levels, t.var) for t in tensors]
     imm_doms = graph.dominators()
     dom_map = {k.var: v.var for k, v in imm_doms.items()}
     ret = analysis.generate_merged_memory_level_trees(
         tensor_vars,
+        initial_bounds,
         masks,
         dom_map,
         levels
     )
     return ret
+
+
+def memory_level_tree_tiling(tree: MemoryLevelTree, tensor: Tensor, factor_dict: Dict[Loop, List[int]]):
+    
+    if tensor.init is None:
+        raise ValueError("Can't tile for input tensors.")
+    elif len(tensor.updates) == 0:
+        compute = tensor.init
+    elif len(tensor.updates) == 1:
+        compute = tensor.updates[0]
+    else:
+        raise NotImplementedError("Computations with more than 1 update are not supported yet.")
+    
+    if tensor.init.has_reduce():
+        raise RuntimeError("Don't konw how to handle reductions in init stages.")
+
+    all_loops = compute.all_loops()
+    loop_check_set = {l:None for l in all_loops}
+
+    length = None
+    for k, v in factor_dict.items():
+        if length is None:
+            length = len(v)
+        else:
+            assert length == len(v), "Tiling factors length for different loops are different."
+        if k not in loop_check_set:
+            raise ValueError(f"Unkonwn loop {k}")
+        del loop_check_set[k]
+    
+    if len(loop_check_set):
+        raise RuntimeError(f"Not all loops are found in tiling factors: {loop_check_set}")
+    
+    levels = tree.get_available_levels(tensor.var)
+    assert levels == length, f"Tiling levels {levels} mismatch with factors length {length}"
+
+    tiles = []
+    for level in range(levels):
+        f = []
+        for l in all_loops:
+            factor = factor_dict[l][level]
+            new_l = Loop(factor, l.name, l.iter_type())
+            f.append(new_l.iterator)
+            # f.append(Iterator(Var(l.var.dtype, l.var.id), Range(0, factor, 1), l.iter_type()))
+        tiles.append(f)
+    loop_vars = [l.var for l in all_loops]
+    tree = tree.memory_tiling(tensor.var, loop_vars, tiles)
+    return tree
+
+def infer_producer_shape(tree: MemoryLevelTree, tensor: Tensor):
+    if tensor.init is None:
+        raise ValueError("Can't infer producer shapes for input tensors.")
+    elif len(tensor.updates) == 0:
+        compute = tensor.init
+    elif len(tensor.updates) == 1:
+        compute = tensor.updates[0]
+    else:
+        raise NotImplementedError("Computations with more than 1 update are not supported yet.")
+
+    input_tensors = compute.input_tensors()
+    num_inputs = len(input_tensors)
+
+    for idx in range(num_inputs):
+        inp = input_tensors[idx]
+        indices = compute.get_tensor_indices(inp)
+        indices = [substitute_expr(x, tree.var_map) for x in indices]
+        if inp.init is not None:
+            common_mem_level = tree.least_common_ancestor(tensor.var, inp.var)
+            print_ir(common_mem_level)
+            if len(inp.updates):
+                inp_compute = inp.updates[0]
+                assert len(inp.updates) == 1
+            else:
+                inp_compute = inp.init
+            inp_spatial_loops = inp_compute.spatial_loops()
+            assert len(indices) == len(inp_spatial_loops)
+            inp_spatial_loop_map = {k:v for k, v in zip(inp_spatial_loops, indices)}
+            
+            # add the new bounds of input tensor to tree
+            # update_bounds = {l.var: l.dom for l in compute.all_loops()}
+            # tree.set_bounds(update_bounds)
+        else:
+            # No need to infer bounds for input tensors
+            pass
+
+@lru_cache
+def get_all_factors(value: int):
+    end = int(math.sqrt(value))
+    ret = []
+    for i in range(1, end+1):
+        if value % i == 0:
+            ret.append(i)
+            ret.append(value // i)
+    return list(sorted(ret))
+
+@lru_cache
+def split_to_factors(value: int, parts: int):
+    factors = get_all_factors(value)
+    ret = []
+    def helper(cur_id, cur, left):
+        nonlocal ret
+        if cur_id == parts - 1:
+            ret.append(cur + [left])
+            return
+        else:
+            for f in factors:
+                if left % f == 0:
+                    helper(cur_id + 1, cur + [f], left//f)
+    helper(0, [], value)
+    return ret
+
+
+def generate_tile_tensor_computation_space(tensor: Tensor, shape: List[int], levels: int):
+    if tensor.init is None:
+        raise ValueError("Can't tile computation for input tensors.")
+    elif len(tensor.updates) == 0:
+        compute = tensor.init
+    elif len(tensor.updates) == 1:
+        compute = tensor.updates[0]
+    else:
+        raise NotImplementedError("Computations with more than 1 update are not supported yet.")
+    
+    assert len(tensor.shape) == len(shape)
+    ndim = len(shape)
+    shape_dict = {}
+    all_loops = compute.all_loops()
+    for l, v in zip(all_loops[:ndim], shape):
+        shape_dict[l] = v
+    if compute.has_reduce():
+        for l in compute.reduce_loops():
+            extent = simplify_expr(l.dom.extent)
+            assert hasattr(extent, "value"), f"Can't handle non-static bounds: {print_ir(extent, print_out=False)}"
+            shape_dict[l] = extent.value
+    
+    tile_choices = {}
+    for k, v in shape_dict.items():
+        tile_choices[k] = split_to_factors(v, levels)
+    
+    return tile_choices

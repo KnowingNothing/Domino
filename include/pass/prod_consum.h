@@ -22,6 +22,8 @@ class GetNdLoadVisitor : public IRVisitor<> {
 
 std::vector<Var> GetInputTensorVars(IRBase ir);
 
+std::vector<Expr> GetInputTensorIndices(IRBase ir, Var tensor_var);
+
 }  // namespace pass
 
 }  // namespace domino

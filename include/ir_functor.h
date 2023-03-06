@@ -26,8 +26,10 @@ class IRFunctor<R(Args...)> : public GeneralFunctor<IRFunctor<R(Args...)>, IRBas
                                                                >,
                                                     R(Args...)> {
  public:
-#define X_DECL_IR(X) \
-  virtual R ImplVisit(X, Args...) { throw std::runtime_error("not implemented"); }
+#define X_DECL_IR(X)                                                     \
+  virtual R ImplVisit(X op, Args...) {                                   \
+    throw std::runtime_error("not implemented for: " + std::string(op)); \
+  }
 #include <x_macro/ir.x.h>
 };
 

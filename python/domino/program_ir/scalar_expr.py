@@ -646,7 +646,7 @@ class ConstString(ir.ConstString, ConstExpr):
 ## =-------------------------------------------------------------------=##
 class Var(ir.Var, MutableExpr):
     def __init__(self, dtype: Union[DType, str], name: str = ""):
-        if isinstance(name, ConstString):
+        if isinstance(name, (ConstString, ir.ConstString)):
             name = name.value
         ir.Var.__init__(self, DType.make(dtype), name)
         MutableExpr.__init__(self, self.dtype)
@@ -654,7 +654,7 @@ class Var(ir.Var, MutableExpr):
 
 class ConstVar(ir.ConstVar, Var):
     def __init__(self, dtype: Union[DType, str], name: str = ""):
-        if isinstance(name, ConstString):
+        if isinstance(name, (ConstString, ir.ConstString)):
             name = name.value
         ir.ConstVar.__init__(self, DType.make(dtype), name)
         Var.__init__(self, DType.make(dtype), name)

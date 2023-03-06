@@ -22,56 +22,10 @@ namespace analysis {
 class MemoryLevelTreeNode;
 using MemoryLevelTree = Ref<MemoryLevelTreeNode>;
 
-class MemLevelFinder : public IRVisitor<> {
- protected:
-  void ImplVisit(arch::ComputeLevel op) override {
-    AtomBlock as_atom = op->block.as<AtomBlockNode>();
-    if (as_atom.defined()) {
-      Evaluate as_eval = as_atom->getStmt().as<EvaluateNode>();
-      if (as_eval.defined()) {
-        Var as_var = as_eval->expr.as<VarNode>();
-        if (as_var.defined() && as_var == var_) {
-          table_[op] = true;
-        }
-      }
-    }
-  }
-
-  void ImplVisit(arch::MemoryLevel op) override {
-    bool has_tensor = false;
-    for (auto sub : op->sub_levels) {
-      Visit(sub);
-      if (table_.count(sub)) {
-        has_tensor |= table_.at(sub);
-      }
-    }
-    if (has_tensor && op->memory_level->value == level_) {
-      ans_ = op;
-    }
-    table_[op] = has_tensor;
-  }
-
- private:
-  std::unordered_map<IRBase, bool> table_;
-  int level_;
-  Var var_;
-  arch::MemoryLevel ans_;
-
- public:
-  MemLevelFinder(int level, Var var) : level_(level), var_(var) {}
-  void Visit(IRBase op) override {
-    if (table_.count(op)) {
-      return;
-    } else {
-      IRVisitor<>::Visit(op);
-    }
-  }
-  arch::MemoryLevel Get() { return ans_; }
-};
-
 class MemoryLevelTreeNode {
  public:
-  MemoryLevelTreeNode(std::vector<int> levels, Var tensor_var) {
+  MemoryLevelTreeNode(std::vector<int> levels, Var tensor_var,
+                      std::unordered_map<Var, Range> initial_bounds) {
     ASSERT(levels.size() > 0) << "Architecture levels should be at least 1.";
     std::vector<arch::Arch> tmp;
     arch::Arch cur_level = arch::ComputeLevel::make(levels[0], MAKE_BLOCK(tensor_var), tmp);
@@ -80,6 +34,7 @@ class MemoryLevelTreeNode {
       cur_level = arch::MemoryLevel::make(l, MAKE_NULL, sub_levels);
     }
     this->root = cur_level;
+    this->bounds = initial_bounds;
   }
   MemoryLevelTreeNode(arch::Arch root, bool merged, std::vector<int> initial_levels, Var tensor_var)
       : root(std::move(root)),
@@ -87,27 +42,65 @@ class MemoryLevelTreeNode {
         initial_levels(std::move(initial_levels)),
         tensor_var(std::move(tensor_var)) {}
 
+  /**
+   * Cut the current tree from a certain level.
+   * Only consider simple linear memory level tree that has not been merged.
+   */
   MemoryLevelTree Cut(int level) const;
 
+  /**
+   * Merge a simple linear memory level tree to another complex merged tree.
+   * \param other: the memory level tree to be merged into current tree
+   * \param tensor_var: used to find the path to merge into
+   * \param level: the merge level
+   */
   MemoryLevelTree Merge(MemoryLevelTree other, Var tensor_var, int level) const;
+
+  /**
+   * Tell how many levels of memory are needed for tiling for a given tensor_var
+   */
+  int GetAvailableLevels(Var tensor_var) const;
+
+  /**
+   * Perform tiling for memory levels
+   * \param tensor_var: the tiling target tensor
+   * \param loop_vars: the loop vars to tile
+   * \param tiles: the tiling factors in format of Iterators
+   */
+  MemoryLevelTree MemoryTiling(Var tensor_var, std::vector<Var> loop_vars,
+                               std::vector<std::vector<Iterator>> tiles) const;
+
+  /**
+   * Find the least common ancestor for two tensor vars
+   */
+  arch::MemoryLevel LeastCommonAncestor(Var tensor_var1, Var tensor_var2) const;
+
+  /**
+   * Set the bounds.
+   */
+  void SetBounds(std::unordered_map<Var, Range> new_bounds);
 
   arch::Arch root;
   bool merged{false};
   std::vector<int> initial_levels;
   Var tensor_var;
-};
+  std::unordered_map<Var, Expr> var_map;
+  std::unordered_map<Var, Range> bounds;
+};  // namespace analysis
 
 /**
  * Generate all the possible fusion trees
  *
  * \param tensor_vars: toposorted tensor vars from consumers to producers
+ * \param initial_bounds: the initial bounds
  * \param compute_tensor_mask: mask if the tensor is result of computation
  * \param tensor_var_dominators: the immediate dominators of each tensor var
  * \param levels: the level from 0 to N of the memory
  */
 std::vector<MemoryLevelTree> generateMergedMemoryLevelTrees(
-    std::vector<Var> tensor_vars, std::vector<bool> compute_tensor_mask,
-    std::unordered_map<Var, Var> tensor_var_dominators, std::vector<int> levels);
+    std::vector<Var> tensor_vars, std::vector<std::unordered_map<Var, Range>> initial_bounds,
+    std::vector<bool> compute_tensor_mask, std::unordered_map<Var, Var> tensor_var_dominators,
+    std::vector<int> levels);
 
 }  // namespace analysis
 
