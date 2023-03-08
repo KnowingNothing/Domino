@@ -8,12 +8,28 @@ import queue
 import math
 from functools import lru_cache
 
-__all__ = ["MemoryLevelTree", "generate_merged_memory_level_trees",
+__all__ = ["MemoryLevelTree", "create_tree", "generate_merged_memory_level_trees",
            "memory_level_tree_tiling", "infer_producer_shape",
            "generate_tile_tensor_computation_space"]
 
 
 MemoryLevelTree = analysis.MemoryLevelTree
+
+def create_tree(tensor: Tensor, levels: List[int]):
+    if tensor.init is None:
+        initial_bounds = {}
+        return MemoryLevelTree(levels, tensor.var, initial_bounds)
+    elif len(tensor.updates) == 0:
+        compute = tensor.init
+    elif len(tensor.updates) == 1:
+        compute = tensor.updates[0]
+    else:
+        raise NotImplementedError("Computations with more than 1 update are not supported yet.")
+    
+    if tensor.init.has_reduce():
+        raise RuntimeError("Don't konw how to handle reductions in init stages.")
+    initial_bounds = {l.var: l.dom for l in compute.all_loops()}
+    return MemoryLevelTree(levels, tensor.var, initial_bounds)
 
 
 def generate_merged_memory_level_trees(root_tensor: Tensor, levels: List[int]):
@@ -130,13 +146,14 @@ def infer_producer_shape(tree: MemoryLevelTree, tensor: Tensor):
             inp_spatial_loops = inp_compute.spatial_loops()
             assert len(indices) == len(inp_spatial_loops)
             inp_spatial_loop_map = {k:v for k, v in zip(inp_spatial_loops, indices)}
-            
+
             # add the new bounds of input tensor to tree
             # update_bounds = {l.var: l.dom for l in compute.all_loops()}
             # tree.set_bounds(update_bounds)
         else:
             # No need to infer bounds for input tensors
             pass
+    raise NotImplementedError("The infer_bound is not implemented!")
 
 @lru_cache
 def get_all_factors(value: int):

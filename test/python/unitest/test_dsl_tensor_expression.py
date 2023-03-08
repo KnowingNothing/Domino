@@ -222,8 +222,7 @@ def test_te_memory_level_tree_4():
         print(k)
         print(v)
     infer_producer_shape(tree, bmm2)
-
-
+    raise NotImplementedError()
 
 
 
@@ -236,4 +235,4 @@ if __name__ == "__main__":
     test_te_memory_level_tree_1()
     test_te_memory_level_tree_2()
     test_te_memory_level_tree_3()
-    test_te_memory_level_tree_4()
+    # test_te_memory_level_tree_4()
