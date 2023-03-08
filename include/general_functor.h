@@ -44,6 +44,40 @@ template <typename Visitor, typename Base, typename Deriveds, typename Func,
 class GeneralFunctor;
 
 template <typename Visitor, typename Base, typename... Deriveds, typename Pointer,
+          template <typename, typename> typename Vtable, typename... Args>
+class GeneralFunctor<Visitor, Base, std::tuple<void, Deriveds...>, void(Args...), Pointer, Vtable> {
+  using R = void;
+  using BasePtr = typename Pointer::type;
+  using FuncType = R (*)(Visitor*, BasePtr, Args...);
+  using VtableType = Vtable<BasePtr, FuncType>;
+
+ public:
+  virtual R Visit(BasePtr base, Args... args) {
+    static VtableType vtable = BuildVtable();
+    vtable.Get(base)(static_cast<Visitor*>(this), base, std::forward<Args>(args)...);
+  }
+
+  virtual R operator()(BasePtr base, Args... args) { Visit(base, std::forward<Args>(args)...); }
+
+ private:
+  template <typename Derived, typename... Rest>
+  static void Register(VtableType& vtable) {
+    vtable.template Set<Derived>([](Visitor* visitor, BasePtr base, Args... args) -> R {
+      visitor->ImplVisit(Pointer::template cast<Derived>(base), std::forward<Args>(args)...);
+    });
+    if constexpr (sizeof...(Rest) > 0) {
+      Register<Rest...>(vtable);
+    }
+  }
+
+  static VtableType BuildVtable() {
+    VtableType vtable;
+    Register<Deriveds...>(vtable);
+    return vtable;
+  }
+};
+
+template <typename Visitor, typename Base, typename... Deriveds, typename Pointer,
           template <typename, typename> typename Vtable, typename R, typename... Args>
 class GeneralFunctor<Visitor, Base, std::tuple<void, Deriveds...>, R(Args...), Pointer, Vtable> {
   using BasePtr = typename Pointer::type;
@@ -53,17 +87,7 @@ class GeneralFunctor<Visitor, Base, std::tuple<void, Deriveds...>, R(Args...), P
  public:
   virtual R Visit(BasePtr base, Args... args) {
     static VtableType vtable = BuildVtable();
-    // if constexpr (Cache && sizeof...(Args) == 0) {
-    //   auto it = ret_cache_.find(base);
-    //   if (it != ret_cache_.end()) {
-    //     return it->second;
-    //   } else {
-    //     auto ret = vtable.Get(base)(static_cast<Visitor*>(this), base,
-    //     std::forward<Args>(args)...); ret_cache_[base] = ret; return ret;
-    //   }
-    // } else {
     return vtable.Get(base)(static_cast<Visitor*>(this), base, std::forward<Args>(args)...);
-    // }
   }
 
   virtual R operator()(BasePtr base, Args... args) {
@@ -86,8 +110,6 @@ class GeneralFunctor<Visitor, Base, std::tuple<void, Deriveds...>, R(Args...), P
     Register<Deriveds...>(vtable);
     return vtable;
   }
-
-  // std::unordered_map<IRBase, R> ret_cache_;
 };
 
 template <typename... Functors>
