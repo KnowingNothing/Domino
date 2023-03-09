@@ -500,6 +500,11 @@ class ExprSimplifier : public ExprMutator {
  */
 Expr SimplifyExpr(Expr expr);
 
+/**
+ * \brief Function that perform IR simplification.
+ */
+IRBase Simplify(IRBase ir);
+
 }  // namespace domino
 
 #endif  // DOMINO_SIMPLIFY_H

@@ -1,8 +1,6 @@
 from dominoc import ir
 from ..type_system import DType
-from .scalar_expr import (
-    Expr, Var, ConstVar, ConstInt, Range, Iterator, IterTypeKind,
-    _to_expr, NdLoad, MemRef)
+from .scalar_expr import *
 from .functional import print_ir
 from .block import _to_block
 from ..passes import (get_input_tensor_vars, ProdConsumGraph,
@@ -10,8 +8,24 @@ from ..passes import (get_input_tensor_vars, ProdConsumGraph,
 from typing import List, Union, Any, Optional
 
 
-__all__ = ["ReduceOp", "ElemOp", "Tensor", "ConstTensor", "Loop", "SpatialLoop",
-           "ReduceLoop", "TensorizedLoop", "SLoop", "RLoop", "TLoop", "make_prod_consum_graph"]
+__all__ = ["NameGenerator", "ReduceOp", "ElemOp", "Tensor", "TensorView", "ConstTensor", "Loop", "SpatialLoop",
+           "ReduceLoop", "TensorizedLoop", "SLoop", "RLoop", "TLoop", "make_prod_consum_graph",
+           "max", "cast", "pack_value", "clip", "sqrt", "exp", "make_const", "const", ]
+
+
+class NameGenerator(object):
+    name_cache = {}
+
+    @classmethod
+    def gen_name(cls, hint: str):
+        parts = hint.split("_")
+        if parts[0] not in cls.name_cache:
+            cls.name_cache[parts[0]] = 0
+            return parts[0] + f"_{0}"
+        else:
+            v = cls.name_cache[parts[0]] + 1
+            cls.name_cache[parts[0]] += 1
+            return parts[0] + f"_{v}"
 
 
 class ComputeOp(object):
@@ -33,7 +47,6 @@ class ElemOp(ComputeOp):
 
 
 class Tensor(object):
-    name_cache = {}
     tensor_cache = {}
 
     def __init__(
@@ -42,7 +55,7 @@ class Tensor(object):
             name: str = "T",
             dtype: Union[DType, str] = "float32"):
         self.shape = shape
-        self.name = Tensor._gen_name(name)
+        self.name = NameGenerator.gen_name(name)
         self.dtype = dtype
         self.var = Var(self.dtype, self.name)
         self.init: Optional[Compute] = None
@@ -396,7 +409,7 @@ class Compute(object):
 
     def reduce_loops(self):
         return [Loop.loop_cache[v] for v in self.reduce_axis]
-    
+
     def spatial_loops(self):
         visit = set()
         ret = []
@@ -425,11 +438,10 @@ class Compute(object):
 
 
 class Loop(object):
-    name_cache = {}
     loop_cache = {}
 
     def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name="l", iter_kind=IterTypeKind.Spatial):
-        if isinstance(r, int):
+        if isinstance(r, (int, ir.Expr)):
             self.dom = Range(0, r, 1)
         elif isinstance(r, (list, tuple)):
             assert len(r) == 2 or len(r) == 3
@@ -446,25 +458,17 @@ class Loop(object):
             raise ValueError(
                 f"Can't use {r} of type {type(r)} to initialize Loop")
 
-        self.name = Loop._gen_name(name)
+        self.name = NameGenerator.gen_name(name)
         self.iter_kind = iter_kind
         self.var = Var("int32", self.name)
         self.loop_cache[self.var] = self
         self.iterator = Iterator(self.var, self.dom, iter_kind)
+        self.beg = self.dom.beg
+        self.extent = self.dom.extent
+        self.step = self.dom.step
 
     def iter_type(self):
         return self.iter_kind
-
-    @classmethod
-    def _gen_name(cls, hint: str):
-        parts = hint.split("_")
-        if parts[0] not in cls.name_cache:
-            cls.name_cache[parts[0]] = 0
-            return parts[0] + f"_{0}"
-        else:
-            v = cls.name_cache[parts[0]] + 1
-            cls.name_cache[parts[0]] += 1
-            return parts[0] + f"_{v}"
 
     def __add__(self, other: Any):
         return self.var + other
@@ -571,3 +575,69 @@ TLoop = TensorizedLoop
 
 def make_prod_consum_graph(tensor):
     return ProdConsumGraph(tensor)
+
+
+def max(a, b):
+    if isinstance(a, TensorView):
+        a = a.as_expr()
+    if isinstance(b, TensorView):
+        b = b.as_expr()
+
+    if isinstance(a, ir.Expr) or isinstance(b, ir.Expr):
+        return Max(a, b)
+
+
+def pack_value(dtype, values):
+    dtype = DType.make(dtype)
+    sum_bits = reduce(lambda x, y: x + y, [v.dtype.bits for v in values], 0)
+    if sum_bits != dtype.bits:
+        raise ValueError(
+            "pack_value requires the total bits of each value equals to the given dtype bits.")
+    return PackValue(dtype, values)
+
+
+def clip(value, lower, upper):
+    lower = _to_expr(lower)
+    upper = _to_expr(upper)
+    return Max(lower, Min(upper, value))
+
+
+def sqrt(value):
+    value = _to_expr(value)
+    return Call(value.dtype, "sqrt", [value])
+
+
+def exp(value):
+    if isinstance(value, TensorView):
+        value = value.as_expr()
+    elif isinstance(value, Loop):
+        value = value.var
+    else:
+        value = _to_expr(value)
+    return Call(value.dtype, "exp", [value])
+
+
+def make_const(value, dtype):
+    dtype = DType.make(dtype)
+    if dtype.is_int():
+        return ConstInt(value, dtype.bits, dtype.lane)
+    elif dtype.is_uint():
+        return ConstUInt(value, dtype.bits, dtype.lane)
+    elif dtype.is_float():
+        return ConstFloat(value, dtype.bits, dtype.lane)
+    elif dtype.is_bfloat():
+        return ConstBFloat(value, dtype.bits, dtype.lane)
+    elif dtype.is_tfloat():
+        return ConstTFloat(value, dtype.bits, dtype.lane)
+    elif dtype.is_string():
+        return ConstString(value)
+    else:
+        raise NotImplementedError(f"Can't make const {dtype}.")
+
+
+const = make_const
+
+
+def cast(dtype, value):
+    dtype = DType.make(dtype)
+    return Cast(dtype, value)

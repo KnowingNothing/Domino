@@ -8,12 +8,13 @@ from ..codegen import *
 from ..type_system.dtype import DType
 from typing import Optional, Union, List, Any
 from functools import reduce
-from .simplify import substitute_block
+from .simplify import substitute_block, simplify
 from ..passes import flatten_array_access
 
 __all__ = [
     "program_lower",
-    "program_build"
+    "program_build",
+    "IRBuilderContext"
 ]
 
 
@@ -97,6 +98,8 @@ class Array(object):
                 extent = (stop - start) // step
                 new_shape.append(extent)
             else:
+                if isinstance(k, Loop):
+                    k = k.var
                 # TODO: better index bound check
                 value_k = k
                 if isinstance(k, ConstInt):
@@ -244,6 +247,58 @@ class ForBlockContext(BlockContext):
             raise RuntimeError(exc_value)
 
 
+class TileBlockContext(BlockContext):
+    def __init__(self, ir_builder, mem_level: str, loops: List[Loop]):
+        super(TileBlockContext, self).__init__(ir_builder)
+        self.mem_level = mem_level
+        self.loops = loops
+
+    def __enter__(self):
+        node = TreeContainer(self)
+        self.ir_builder.stack[-1].add_child(node)
+        self.ir_builder.stack.append(node)
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        if exc_type is None:
+            while len(self.ir_builder.stack) > 0 and self.ir_builder.stack[-1].ctx != self:
+                self.ir_builder.stack.pop()
+            if self.ir_builder.stack[-1].ctx == self:
+                self.ir_builder.stack.pop()
+            return True
+        else:
+            raise RuntimeError(exc_value)
+
+
+class ScopeBlockContext(BlockContext):
+    def __init__(self, ir_builder, scope: str):
+        super(ScopeBlockContext, self).__init__(ir_builder)
+        self.scope = scope
+
+    def __enter__(self):
+        node = TreeContainer(self)
+        self.ir_builder.stack[-1].add_child(node)
+        self.ir_builder.stack.append(node)
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        if exc_type is None:
+            while len(self.ir_builder.stack) > 0 and self.ir_builder.stack[-1].ctx != self:
+                self.ir_builder.stack.pop()
+            if self.ir_builder.stack[-1].ctx == self:
+                self.ir_builder.stack.pop()
+            return True
+        else:
+            raise RuntimeError(exc_value)
+
+
+# class InitBlockContext(BlockContext):
+#     def __init__(self, ir_builder, tensor_view: TensorView, value: Expr):
+#         super(InitBlockContext, self).__init__(ir_builder)
+#         self.tensor_view = tensor_view
+#         self.value = value
+#         node = TreeContainer(self)
+#         self.ir_builder.stack[-1].add_child(node)
+
+
 class StmtBlockContext(BlockContext):
     def __init__(self, ir_builder, stmt):
         super(StmtBlockContext, self).__init__(ir_builder)
@@ -275,12 +330,23 @@ class TreeContainer(object):
         return self.ctx is None
 
 
+class LoopRelation(object):
+    pass
+
+
+class SplitRelation(LoopRelation):
+    def __init__(self, sub_loops) -> None:
+        self.sub_loops = sub_loops
+
+
 class IRBuilderContext(object):
     def __init__(self):
         self.tree = TreeContainer(None)
         self.stack = [self.tree]
         self.array_map = {}
         self.input_tensor_map = {}
+        self.loop_relatioins = {}
+        self.spatial_loop_set = set()
 
     def bind_array(self, var: Var, array: Array):
         assert isinstance(var, Var)
@@ -291,6 +357,15 @@ class IRBuilderContext(object):
         assert isinstance(var, Var)
         assert isinstance(tensor, Tensor)
         self.input_tensor_map[var] = tensor
+
+    def Array(self, shape, name="T", dtype="float32"):
+        name = NameGenerator.gen_name(name)
+        var = Var(dtype, name)
+        array = Array(
+            self, var, shape
+        )
+        self.bind_array(var, array)
+        return array
 
     ## =---------------------------------------------------=##
     ## =         Implementation of primitives              =##
@@ -320,6 +395,15 @@ class IRBuilderContext(object):
             self, IterTypeKind.Zigzag, names=names, ranges=ranges, bindings=bindings)
         return for_ctx
 
+    def tile(self, mem_level: str, loops: List[Loop]):
+        assert isinstance(mem_level, str)
+        for l in loops:
+            assert isinstance(l, Loop)
+        tile_ctx = TileBlockContext(
+            self, mem_level, loops
+        )
+        return tile_ctx
+
     def map_var(self, name: str, expr: Expr):
         v = Var(expr.dtype, name)
         m = MapVar(v, expr)
@@ -330,6 +414,36 @@ class IRBuilderContext(object):
 
     def fill(self, array, value):
         raise NotImplementedError()
+
+    # def init(self, tensor_view: TensorView, value: Expr):
+    #     init_ctx = InitBlockContext(self, tensor_view, value)
+
+    def split(self, loop: Loop, nparts=1, factors=None):
+        if factors is None:
+            raise NotImplementedError(
+                "Support for auto-tiling will be added later.")
+        assert len(factors) == nparts
+        new_loops = [
+            Loop(f, name=loop.name, iter_kind=loop.iter_kind)
+            for f in factors
+        ]
+        self.loop_relatioins[loop] = SplitRelation(new_loops)
+        return new_loops
+
+    def spatial(self, loop: Loop):
+        self.spatial_loop_set.add(loop)
+
+    def sequential(self):
+        scope_ctx = ScopeBlockContext(self, "sequential")
+        return scope_ctx
+
+    def pipeline(self):
+        scope_ctx = ScopeBlockContext(self, "pipeline")
+        return scope_ctx
+
+    def parallel(self):
+        scope_ctx = ScopeBlockContext(self, "parallel")
+        return scope_ctx
 
     def load(self, target, lambda_func):
         if isinstance(target, Array):
@@ -402,6 +516,41 @@ class IRBuilderContext(object):
                 else:
                     raise NotImplementedError()
                 return body
+            elif isinstance(cur.ctx, TileBlockContext):
+                if len(sub_trees) > 0:
+                    body = sub_trees[-1]
+                    for i in range(len(sub_trees) - 1):
+                        body = SeqBlock(
+                            sub_trees[len(sub_trees) - i - 2], body)
+                else:
+                    body = Evaluate(0)
+                num_loops = len(cur.ctx.loops)
+                for i in range(num_loops):
+                    idx = num_loops - i - 1
+                    loop = cur.ctx.loops[idx]
+                    if loop in self.spatial_loop_set:
+                        binding = "spatial"
+                    else:
+                        binding = "temporal"
+                    body = ForBlock(
+                        loop.iterator, body, binding
+                    )
+                body = AttrBlock(
+                    "tile", Var("int32"), cur.ctx.mem_level, body
+                )
+                return body
+            elif isinstance(cur.ctx, ScopeBlockContext):
+                if len(sub_trees) > 0:
+                    body = sub_trees[-1]
+                    for i in range(len(sub_trees) - 1):
+                        body = SeqBlock(
+                            sub_trees[len(sub_trees) - i - 2], body)
+                else:
+                    body = Evaluate(0)
+                body = AttrBlock(
+                    "scope", Var("int32"), cur.ctx.scope, body
+                )
+                return body
             elif isinstance(cur.ctx, AllocBlockContext):
                 if len(sub_trees) > 0:
                     body = sub_trees[-1]
@@ -435,8 +584,24 @@ class IRBuilderContext(object):
                     cur.ctx.map_vars, body)
                 return body
             else:
-                raise NotImplementedError()
+                raise NotImplementedError(f"{cur.ctx}")
         ret = builder(self.tree)
+
+        # substitute the loops
+        smap = {}
+        for l, rel in self.loop_relatioins.items():
+            if isinstance(rel, SplitRelation):
+                loops = rel.sub_loops
+                assert len(loops) > 0
+                strides = [1]
+                for s in reversed(loops[1:]):
+                    strides = [Mul(strides[0], s.extent)] + strides
+                flattened = loops[0] * strides[0]
+                for ll, ss in zip(loops[1:], strides[1:]):
+                    flattened += Mul(ll.var, ss)
+                smap[l.var] = flattened
+        ret = substitute_block(ret, smap)
+
         return ret
 
 
@@ -458,7 +623,8 @@ def program_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=Non
     input_arrays = []
     for v, t in zip(tensor_input_vars, tensor_inputs):
         ctx.bind_input(v, t)
-        array = Array(ctx, v, t.shape) # [reduce(lambda x, y: x * y, t.shape, 1)]
+        # [reduce(lambda x, y: x * y, t.shape, 1)]
+        array = Array(ctx, v, t.shape)
         input_arrays.append(array)
         ctx.bind_array(v, array)
 
@@ -468,6 +634,7 @@ def program_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=Non
     body = ctx.build()
 
     # basic passes (TODO: pass management still in progress)
+    body = simplify(body)
     body = flatten_arrays(body, input_arrays)
 
     signature = KernelSignature(

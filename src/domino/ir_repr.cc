@@ -192,7 +192,7 @@ class IRPrinter : public IRFunctor<std::string()> {
 
   /// statements
   std::string ImplVisit(NdStore op) override {
-    return fmt::format("store_n({}, {}, {});", Visit(op->mem_ref), Visit(op->indices),
+    return fmt::format("{}[{}] = {};", Visit(op->mem_ref), Visit(op->indices),
                        Visit(op->value));
   }
 
@@ -204,10 +204,14 @@ class IRPrinter : public IRFunctor<std::string()> {
 
   /// blocks
   std::string ImplVisit(AttrBlock op) override {
+    increase_indent();
     std::string body_str = Visit(op->body);
+    decrease_indent();
     std::string ind = make_indent();
-    return fmt::format("{}attr({}, {}={})\n{}", ind, Visit(op->obj), Visit(op->key),
-                       Visit(op->value), body_str);
+    std::string left = "{";
+    std::string right = "}";
+    return fmt::format("{} // attr({}, {}={}) {}\n{}{}{}\n", ind, Visit(op->obj), Visit(op->key),
+                       Visit(op->value), left, body_str, ind, right);
   }
 
   std::string ImplVisit(NdForBlock op) override {

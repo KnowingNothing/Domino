@@ -33,8 +33,9 @@ def _to_block(block: Any):
 
 
 class AttrBlock(ir.AttrBlock, Block):
-    def __init__(self, key: str, obj: IRBase, value: IRBase, body: Block):
+    def __init__(self, key: str, obj: Var, value: Expr, body: Block):
         body = _to_block(body)
+        value = _to_expr(value)
         ir.AttrBlock.__init__(self, key, obj, value, body)
         Block.__init__(self)
 

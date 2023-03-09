@@ -4,7 +4,8 @@ from .stmt import _to_stmt
 from .block import _to_block
 
 __all__ = ["expr_simplify_match_pattern",
-           "get_expr_simplify_match_patterns", "substitute_expr", "simplify_expr", "substitute_ir"]
+           "get_expr_simplify_match_patterns",
+           "substitute_expr", "simplify_expr", "substitute_ir", "simplify"]
 
 expr_simplify_match_pattern = ir.expr_simplify_match_pattern
 get_expr_simplify_match_patterns = ir.get_expr_simplify_match_patterns
@@ -35,3 +36,7 @@ def substitute_ir(ir_tree, mapping):
 
 def simplify_expr(expr):
     return ir.simplify_expr(expr)
+
+
+def simplify(irm):
+    return ir.simplify(irm)

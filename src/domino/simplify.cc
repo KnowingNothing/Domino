@@ -53,4 +53,10 @@ Expr SimplifyExpr(Expr expr) {
   return sim.Visit(expr);
 }
 
+IRBase Simplify(IRBase ir) {
+  auto sim = std::make_shared<ExprSimplifier>();
+  IRMutator mutator(sim);
+  return mutator.Visit(ir);
+}
+
 }  // namespace domino

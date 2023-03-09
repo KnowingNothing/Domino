@@ -16,10 +16,10 @@ __all__ = [
     "Select",
     "Range", "ExprList",
     "CondAll", "CondAny",
-    "ConstInt", "ConstUInt", "ConstFloat", "ConstBFloat", "ConstTFloat", "ConstString", "make_const", "const",
+    "ConstInt", "ConstUInt", "ConstFloat", "ConstBFloat", "ConstTFloat", "ConstString",
     "Var", "ConstVar", "IterTypeKind", "Iterator", "NdLoad", "Load", "MapVar", "Slice", "MemSlice", "Call",
     "PackValue",
-    "_to_expr", "cast", "pack_value", "clip", "sqrt", "exp"
+    "_to_expr"
 ]
 
 
@@ -334,138 +334,184 @@ class ArrayRef(ir.ArrayRef, Expr):
 
 class Add(ir.Add, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.Add.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
 class Sub(ir.Sub, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.Sub.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
 class Mul(ir.Mul, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.Mul.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
 class Div(ir.Div, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.Div.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
 class Mod(ir.Mod, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.Mod.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
 class FloorDiv(ir.FloorDiv, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.FloorDiv.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
 class FloorMod(ir.FloorMod, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.FloorMod.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
 class Max(ir.Max, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.Max.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
 class Min(ir.Min, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.Min.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
 class RightShift(ir.RightShift, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.RightShift.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
 class LeftShift(ir.LeftShift, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.LeftShift.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
 class And(ir.And, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.And.__init__(self, a, b)
         BinExpr.__init__(self, a.dtype, a, b)
 
 
 class Or(ir.Or, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.Or.__init__(self, a, b)
         BinExpr.__init__(self, self.dtype, a, b)
 
 
 class XOr(ir.XOr, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.XOr.__init__(self, a, b)
         BinExpr.__init__(self, self.dtype, a, b)
 
 
 class BitAnd(ir.BitAnd, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.BitAnd.__init__(self, a, b)
         BinExpr.__init__(self, self.dtype, a, b)
 
 
 class BitOr(ir.BitOr, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.BitOr.__init__(self, a, b)
         BinExpr.__init__(self, self.dtype, a, b)
 
 
 class BitXOr(ir.BitXOr, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.BitXOr.__init__(self, a, b)
         BinExpr.__init__(self, self.dtype, a, b)
 
 
 class GT(ir.GT, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.GT.__init__(self, a, b)
         BinExpr.__init__(self, self.dtype, a, b)
 
 
 class GE(ir.GE, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.GE.__init__(self, a, b)
         BinExpr.__init__(self, self.dtype, a, b)
 
 
 class LT(ir.LT, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.LT.__init__(self, a, b)
         BinExpr.__init__(self, self.dtype, a, b)
 
 
 class LE(ir.LE, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.LE.__init__(self, a, b)
         BinExpr.__init__(self, self.dtype, a, b)
 
 
 class EQ(ir.EQ, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.EQ.__init__(self, a, b)
         BinExpr.__init__(self, self.dtype, a, b)
 
 
 class NE(ir.NE, BinExpr):
     def __init__(self, a: Expr, b: Expr):
+        a = _to_expr(a)
+        b = _to_expr(b)
         ir.NE.__init__(self, a, b)
         BinExpr.__init__(self, self.dtype, a, b)
 
@@ -766,54 +812,3 @@ class PackValue(ir.PackValue, Expr):
         new_values = ExprList([_to_expr(v) for v in value_list])
         ir.PackValue.__init__(self, dtype, new_values)
         Expr.__init__(self, self.dtype)
-
-
-def make_const(value, dtype):
-    dtype = DType.make(dtype)
-    if dtype.is_int():
-        return ConstInt(value, dtype.bits, dtype.lane)
-    elif dtype.is_uint():
-        return ConstUInt(value, dtype.bits, dtype.lane)
-    elif dtype.is_float():
-        return ConstFloat(value, dtype.bits, dtype.lane)
-    elif dtype.is_bfloat():
-        return ConstBFloat(value, dtype.bits, dtype.lane)
-    elif dtype.is_tfloat():
-        return ConstTFloat(value, dtype.bits, dtype.lane)
-    elif dtype.is_string():
-        return ConstString(value)
-    else:
-        raise NotImplementedError(f"Can't make const {dtype}.")
-
-
-const = make_const
-
-
-def cast(dtype, value):
-    dtype = DType.make(dtype)
-    return Cast(dtype, value)
-
-
-def pack_value(dtype, values):
-    dtype = DType.make(dtype)
-    sum_bits = reduce(lambda x, y: x + y, [v.dtype.bits for v in values], 0)
-    if sum_bits != dtype.bits:
-        raise ValueError(
-            "pack_value requires the total bits of each value equals to the given dtype bits.")
-    return PackValue(dtype, values)
-
-
-def clip(value, lower, upper):
-    lower = _to_expr(lower)
-    upper = _to_expr(upper)
-    return Max(lower, Min(upper, value))
-
-
-def sqrt(value):
-    value = _to_expr(value)
-    return Call(value.dtype, "sqrt", [value])
-
-
-def exp(value):
-    value = _to_expr(value)
-    return Call(value.dtype, "exp", [value])

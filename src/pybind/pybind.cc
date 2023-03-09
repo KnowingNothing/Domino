@@ -73,6 +73,11 @@ void bindIR(py::module_& m) {
       .def("is_const", &ExprNode::IsConst)
       .def("__repr__", [](const ExprNode& d) { return std::string(d); })
       .def("__str__", [](const ExprNode& d) { return std::string(d); })
+      .def("__mul__", [](const Expr& a, const Expr& b) { return Mul::make(a, b); })
+      .def("__mul__", [](const int a, const Expr& b) { return Mul::make(ConstInt::make(a), b); })
+      .def("__floordiv__", [](const Expr& a, const Expr& b) { return FloorDiv::make(a, b); })
+      .def("__floordiv__",
+           [](const Expr& a, const int b) { return FloorDiv::make(a, ConstInt::make(b)); })
       .def_readonly("dtype", &ExprNode::dtype);
 
   /// bind binary operation
@@ -507,6 +512,10 @@ void bindIR(py::module_& m) {
   /// bind SimplifyExpr function
   ir_m.def("simplify_expr", &SimplifyExpr,
            "Function that simplifies expressions according to a list of inner rules.");
+
+  /// bind Simplify function
+  ir_m.def("simplify", &Simplify,
+           "Function that simplifies IR according to a list of inner rules.");
 
   /// bind replicate
   ir_m.def("replicate", &replicate, "Replicate an IR exactly.");
