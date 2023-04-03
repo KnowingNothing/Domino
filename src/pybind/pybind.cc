@@ -463,7 +463,8 @@ void bindIR(py::module_& m) {
       .def(py::init<ConstInt, Block, std::vector<Arch>>())
       .def_readonly("memory_level", &MemoryLevelNode::memory_level)
       .def_readwrite("block", &MemoryLevelNode::block)
-      .def_readwrite("sub_levels", &MemoryLevelNode::sub_levels);
+      .def_readwrite("sub_levels", &MemoryLevelNode::sub_levels)
+      .def_readwrite("scope", &MemoryLevelNode::scope);
 
   py::class_<ComputeLevelNode, ComputeLevel>(ir_m, "ComputeLevel", pyArch)
       .def(py::init<ConstInt, Block, std::vector<Arch>>())

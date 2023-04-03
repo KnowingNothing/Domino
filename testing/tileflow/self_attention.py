@@ -85,6 +85,7 @@ def self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k
 
 if __name__ == "__main__":
     ctx = dir.IRBuilderContext()
+    ctx.set_target_tileflow()
     batch_size = 64
     seq_len = 1024
     num_heads = 12
@@ -102,5 +103,5 @@ if __name__ == "__main__":
 
     def static_func(ctx, Q, K, V, Output):
         return self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k)
-    kernel = dir.program_lower(static_func, [Q, K, V, Output], ctx=ctx)
+    kernel = dir.arch_lower(static_func, [Q, K, V, Output], ctx=ctx)
     dir.print_ir(kernel)

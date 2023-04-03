@@ -24,6 +24,9 @@ class MemoryLevel(ir.MemoryLevel, Arch):
         block = _to_block(block)
         ir.MemoryLevel.__init__(self, level, block, sub_levels)
         Arch.__init__(self)
+        
+    def set_scope(self, scope: str):
+        self.scope = scope
 
 
 class ComputeLevel(ir.ComputeLevel, Arch):

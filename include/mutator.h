@@ -380,7 +380,9 @@ class ArchMutator : public IRFunctor<Arch()> {
     for (auto v : op->sub_levels) {
       new_sub.push_back(Visit(v));
     }
-    return MemoryLevel::make(as_int, VisitBlock(op->block), new_sub);
+    auto ret = MemoryLevel::make(as_int, VisitBlock(op->block), new_sub);
+    ret->scope = op->scope;
+    return ret;
   }
 
   Arch ImplVisit(ComputeLevel op) override {

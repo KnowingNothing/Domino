@@ -53,6 +53,7 @@ class MemoryLevelNode : public ArchNode {
   ConstInt memory_level;
   Block block;
   std::vector<Arch> sub_levels;
+  std::string scope{""};
 };
 
 using MemoryLevel = Ref<MemoryLevelNode>;

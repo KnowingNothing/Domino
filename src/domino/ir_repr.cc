@@ -192,8 +192,7 @@ class IRPrinter : public IRFunctor<std::string()> {
 
   /// statements
   std::string ImplVisit(NdStore op) override {
-    return fmt::format("{}[{}] = {};", Visit(op->mem_ref), Visit(op->indices),
-                       Visit(op->value));
+    return fmt::format("{}[{}] = {};", Visit(op->mem_ref), Visit(op->indices), Visit(op->value));
   }
 
   std::string ImplVisit(Store op) override {
@@ -359,7 +358,8 @@ class IRPrinter : public IRFunctor<std::string()> {
     decrease_indent();
     std::string left = "{";
     std::string right = "}";
-    return fmt::format("{}memory @ L{}\n{}{}", ind, level, body_str, fmt::join(sub_levels, ""));
+    return fmt::format("{}memory @ L{} scope={}\n{}{}", ind, level, op->scope, body_str,
+                       fmt::join(sub_levels, ""));
   }
 
   std::string ImplVisit(ComputeLevel op) override {

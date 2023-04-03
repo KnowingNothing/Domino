@@ -585,6 +585,8 @@ def max(a, b):
 
     if isinstance(a, ir.Expr) or isinstance(b, ir.Expr):
         return Max(a, b)
+    else:
+        return a if a > b else b
 
 
 def pack_value(dtype, values):
