@@ -311,6 +311,13 @@ Stmt SubstituteStmt(Stmt stmt, std::unordered_map<Var, Expr> mapping);
 Block SubstituteBlock(Block block, std::unordered_map<Var, Expr> mapping);
 
 /**
+ * \brief Function for block substitution
+ * \param arch The arch to be substituted
+ * \param mapping The mapping used in substitution
+ */
+Arch SubstituteArch(Arch arch, std::unordered_map<Var, Expr> mapping);
+
+/**
  * \brief Function for IR substitution
  * \param expr The expression to be substituted
  * \param mapping The mapping used in substitution

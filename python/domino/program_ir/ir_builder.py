@@ -7,9 +7,9 @@ from .dsl import *
 from .functional import print_ir
 from ..codegen import *
 from ..type_system.dtype import DType
-from typing import Optional, Union, List, Any
+from typing import Optional, Union, List, Any, Dict
 from functools import reduce
-from .simplify import substitute_block, simplify
+from .simplify import substitute_block, simplify, substitute_ir
 from ..passes import flatten_array_access
 
 __all__ = [
@@ -701,6 +701,14 @@ def flatten_arrays(body: Block, arrays: List[Array]):
     return flatten_array_access(body, var_list, strides)
 
 
+def remap_tiled_loops(body: Arch, loop_relations: Dict[Var, Var]):
+    """
+    This is used to simplify the code generation for TileFlow
+    Because TileFlow requires all the tiled loops use the same name
+    """
+    return substitute_ir(body, loop_relations)
+
+
 def arch_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=None):
     ctx = IRBuilderContext() if ctx is None else ctx
     assert isinstance(ctx, IRBuilderContext)
@@ -721,6 +729,11 @@ def arch_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=None):
     body = ctx.build()
     body = simplify(body)
 
+    reverse_relation = {}
+    for k, v in ctx.loop_relatioins.items():
+        for vv in v.sub_loops:
+            reverse_relation[vv.var] = k.var
+    body = remap_tiled_loops(body, reverse_relation)
     return body
 
 

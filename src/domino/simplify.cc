@@ -36,6 +36,14 @@ Block SubstituteBlock(Block block, std::unordered_map<Var, Expr> mapping) {
   return block_mutator(block);
 }
 
+Arch SubstituteArch(Arch arch, std::unordered_map<Var, Expr> mapping) {
+  auto suber = std::make_shared<ExprSubstituter>(mapping);
+  auto stmt_mutator = std::make_shared<StmtMutator>(suber);
+  auto block_mutator = std::make_shared<BlockMutator>(stmt_mutator);
+  ArchMutator arch_mutator(block_mutator);
+  return arch_mutator(arch);
+}
+
 IRBase SubstituteIR(IRBase ir, std::unordered_map<Var, Expr> mapping) {
   if (ir.as<ExprNode>().defined()) {
     return SubstituteExpr(ir.as<ExprNode>(), mapping);
@@ -43,6 +51,8 @@ IRBase SubstituteIR(IRBase ir, std::unordered_map<Var, Expr> mapping) {
     return SubstituteStmt(ir.as<StmtNode>(), mapping);
   } else if (ir.as<BlockNode>().defined()) {
     return SubstituteBlock(ir.as<BlockNode>(), mapping);
+  } else if (ir.as<ArchNode>().defined()) {
+    return SubstituteArch(ir.as<ArchNode>(), mapping);
   } else {
     throw std::runtime_error("The IR type is not supported in substitution.");
   }
