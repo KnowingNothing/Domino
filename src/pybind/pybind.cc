@@ -464,13 +464,15 @@ void bindIR(py::module_& m) {
       .def_readonly("memory_level", &MemoryLevelNode::memory_level)
       .def_readwrite("block", &MemoryLevelNode::block)
       .def_readwrite("sub_levels", &MemoryLevelNode::sub_levels)
-      .def_readwrite("scope", &MemoryLevelNode::scope);
+      .def_readwrite("scope", &MemoryLevelNode::scope)
+      .def_readwrite("annotation", &MemoryLevelNode::annotation);
 
   py::class_<ComputeLevelNode, ComputeLevel>(ir_m, "ComputeLevel", pyArch)
       .def(py::init<ConstInt, Block, std::vector<Arch>>())
       .def_readonly("compute_level", &ComputeLevelNode::compute_level)
       .def_readwrite("block", &ComputeLevelNode::block)
-      .def_readwrite("sub_levels", &ComputeLevelNode::sub_levels);
+      .def_readwrite("sub_levels", &ComputeLevelNode::sub_levels)
+      .def_readwrite("produce_var", &ComputeLevelNode::produce_var);
 
   /// bind IRPrinter function
   ir_m.def("print_ir", &repr, "Function that prints the IR.");
@@ -531,6 +533,9 @@ void bindCodeGen(py::module_& m) {
 
   /// bind codegen_arm_m
   gen_m.def("codegen_arm_m", &codegen_arm_m, "Codegen function for ARM Cortex M processor.");
+
+  /// bind codegen_tileflow
+  gen_m.def("codegen_tileflow", &codegen_tileflow, "Codegen function for TileFlow.");
 }
 
 void bindPass(py::module_& m) {

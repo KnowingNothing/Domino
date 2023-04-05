@@ -382,6 +382,7 @@ class ArchMutator : public IRFunctor<Arch()> {
     }
     auto ret = MemoryLevel::make(as_int, VisitBlock(op->block), new_sub);
     ret->scope = op->scope;
+    ret->annotation = op->annotation;
     return ret;
   }
 
@@ -393,7 +394,9 @@ class ArchMutator : public IRFunctor<Arch()> {
     for (auto v : op->sub_levels) {
       new_sub.push_back(Visit(v));
     }
-    return ComputeLevel::make(as_int, VisitBlock(op->block), new_sub);
+    auto ret = ComputeLevel::make(as_int, VisitBlock(op->block), new_sub);
+    ret->produce_var = op->produce_var;
+    return ret;
   }
 
  public:

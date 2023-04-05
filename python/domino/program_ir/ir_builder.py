@@ -1,3 +1,4 @@
+from dominoc import ir as cir
 from .arch import *
 from .block import *
 from .scalar_expr import *
@@ -16,6 +17,7 @@ __all__ = [
     "program_lower",
     "arch_lower",
     "program_build",
+    "arch_build",
     "IRBuilderContext"
 ]
 
@@ -350,7 +352,7 @@ class IRBuilderContext(object):
         self.loop_relatioins = {}
         self.spatial_loop_set = set()
         self.lower_to_tiles = False
-        
+
     def set_target_tileflow(self):
         self.lower_to_tiles = True
 
@@ -440,15 +442,19 @@ class IRBuilderContext(object):
         self.spatial_loop_set.add(loop)
 
     def sequential(self):
-        scope_ctx = ScopeBlockContext(self, "sequential")
+        scope_ctx = ScopeBlockContext(self, "Sequential")
+        return scope_ctx
+
+    def sharing(self):
+        scope_ctx = ScopeBlockContext(self, "Sharing")
         return scope_ctx
 
     def pipeline(self):
-        scope_ctx = ScopeBlockContext(self, "pipeline")
+        scope_ctx = ScopeBlockContext(self, "Pipeline")
         return scope_ctx
 
     def parallel(self):
-        scope_ctx = ScopeBlockContext(self, "parallel")
+        scope_ctx = ScopeBlockContext(self, "Parallel")
         return scope_ctx
 
     def load(self, target, lambda_func):
@@ -477,7 +483,7 @@ class IRBuilderContext(object):
     def call(self, dtype: str, func_name: str, args: List[Expr]):
         stmt = Evaluate(Call(dtype, func_name, args))
         call_ctx = StmtBlockContext(self, stmt)
-        
+
     def build_on_for_block(self, sub_trees, cur):
         if len(sub_trees) > 0:
             body = sub_trees[-1]
@@ -514,61 +520,107 @@ class IRBuilderContext(object):
             raise NotImplementedError()
         return body
 
+    def build_on_tile_subtrees(self, sub_trees, cur):
+        lift = False
+        for part in sub_trees:
+            if self.lower_to_tiles and isinstance(part, Arch):
+                # all the sub-parts should be lifted to Arch
+                lift = True
+                break
+        if lift and len(sub_trees) > 1:
+            # all the parts should be in ctx.tile
+            max_level = 0
+            for part in sub_trees:
+                if not isinstance(part, Arch):
+                    raise RuntimeError(
+                        "Not all statements are in the scope of ctx.tile!")
+                if isinstance(part, ComputeLevel):
+                    max_level = max(max_level, part.compute_level.value)
+                if isinstance(part, MemoryLevel):
+                    max_level = max(max_level, part.memory_level.value)
+
+            # add the missing scope
+            body = MemoryLevel(max_level, AtomBlock(
+                Evaluate(0)), list(sub_trees))
+            if isinstance(cur.ctx, ScopeBlockContext):
+                body.set_scope(cur.ctx.scope)
+            else:
+                body.set_scope("Sequential")
+        else:
+            # all the parts are not Arch nodes
+            body = sub_trees[-1]
+            for i in range(len(sub_trees) - 1):
+                body = SeqBlock(
+                    sub_trees[len(sub_trees) - i - 2], body)
+        return body
+
     def build_on_tile_block(self, sub_trees, cur):
         if len(sub_trees) > 0:
-            lift = False
-            for part in sub_trees:
-                if self.lower_to_tiles and isinstance(part, Arch):
-                    # all the sub-parts should be lifted to Arch
-                    lift = True
-                    break
-            if lift and len(sub_trees) > 1:
-                # all the parts should be in ctx.tile
-                max_level = 0
-                for part in sub_trees:
-                    if not isinstance(part, Arch):
-                        raise RuntimeError("Not all statements are in the scope of ctx.tile!")
-                    if isinstance(part, ComputeLevel):
-                        max_level = max(max_level, part.compute_level.value)
-                    if isinstance(part, MemoryLevel):
-                        max_level = max(max_level, part.memory_level.value)
-                    
-                # add the missing scope
-                body = MemoryLevel(max_level, AtomBlock(Evaluate(0)), list(sub_trees))
-                body.set_scope("sequential")
-            else:
-                # all the parts are not Arch nodes
-                body = sub_trees[-1]
-                for i in range(len(sub_trees) - 1):
-                    body = SeqBlock(
-                        sub_trees[len(sub_trees) - i - 2], body)
+            body = self.build_on_tile_subtrees(sub_trees, cur)
         else:
             body = Evaluate(0)
         num_loops = len(cur.ctx.loops)
-        #= below is code for lowering to memory-tree
+        # = below is code for lowering to memory-tree
         if self.lower_to_tiles:
             iterators = []
-            for i in range(num_loops):
-                loop = cur.ctx.loops[i]
-                iterators.append(loop.iterator)
-            assert isinstance(cur.ctx.mem_level, str) and cur.ctx.mem_level[0] == 'L'
+            assert isinstance(cur.ctx.mem_level,
+                              str) and cur.ctx.mem_level[0] == 'L'
             level = int(cur.ctx.mem_level[1:])
-            if isinstance(body, Arch):
-                # already formed as tile, must be memory level
-                body = MemoryLevel(level, _to_block(ExprList(iterators)), [body])
+            if (num_loops == 0):
+                if isinstance(body, Arch):
+                    # already formed as tile, must be memory level
+                    body = MemoryLevel(level, _to_block(
+                        ExprList(iterators)), [body])
+                    body.set_annotation("Temporal")
+                else:
+                    # make a compute level first
+                    body = ComputeLevel(level, _to_block(body), [])
+                    body = MemoryLevel(level, _to_block(
+                        ExprList(iterators)), [body])
+                    body.set_annotation("Temporal")
             else:
-                # make a compute level first
-                body = ComputeLevel(level, _to_block(body), [])
-                body = MemoryLevel(level, _to_block(ExprList(iterators)), [body])
-        #= below is code for lowering to loops =#
+                tail = num_loops - 1
+                last_type = "Spatial" if cur.ctx.loops[tail] in self.spatial_loop_set else "Temporal"
+                while tail >= 0:
+                    cur_type = "Spatial" if cur.ctx.loops[tail] in self.spatial_loop_set else "Temporal"
+                    if cur_type == last_type:
+                        iterators = [cur.ctx.loops[tail].iterator] + iterators
+                    else:
+                        if isinstance(body, Arch):
+                            # already formed as tile, must be memory level
+                            body = MemoryLevel(level, _to_block(
+                                ExprList(iterators)), [body])
+                            body.set_annotation(last_type)
+                        else:
+                            # make a compute level first
+                            body = ComputeLevel(level, _to_block(body), [])
+                            body = MemoryLevel(level, _to_block(
+                                ExprList(iterators)), [body])
+                            body.set_annotation(last_type)
+                        iterators = [cur.ctx.loops[tail].iterator]
+                        last_type = cur_type
+                    tail -= 1
+                if len(iterators):
+                    if isinstance(body, Arch):
+                        # already formed as tile, must be memory level
+                        body = MemoryLevel(level, _to_block(
+                            ExprList(iterators)), [body])
+                        body.set_annotation(last_type)
+                    else:
+                        # make a compute level first
+                        body = ComputeLevel(level, _to_block(body), [])
+                        body = MemoryLevel(level, _to_block(
+                            ExprList(iterators)), [body])
+                        body.set_annotation(last_type)
+        # = below is code for lowering to loops =#
         else:
             for i in range(num_loops):
                 idx = num_loops - i - 1
                 loop = cur.ctx.loops[idx]
                 if loop in self.spatial_loop_set:
-                    binding = "spatial"
+                    binding = "Spatial"
                 else:
-                    binding = "temporal"
+                    binding = "Temporal"
                 body = ForBlock(
                     loop.iterator, body, binding
                 )
@@ -576,35 +628,10 @@ class IRBuilderContext(object):
                 "tile", Var("int32"), cur.ctx.mem_level, body
             )
         return body
-    
+
     def build_on_scope_block(self, sub_trees, cur):
         if len(sub_trees) > 0:
-            lift = False
-            for part in sub_trees:
-                if self.lower_to_tiles and isinstance(part, Arch):
-                    # all the sub-parts should be lifted to Arch
-                    lift = True
-                    break
-            if lift and len(sub_trees) > 1:
-                # all the parts should be in ctx.tile
-                max_level = 0
-                for part in sub_trees:
-                    if not isinstance(part, Arch):
-                        raise RuntimeError("Not all statements are in the scope of ctx.tile!")
-                    if isinstance(part, ComputeLevel):
-                        max_level = max(max_level, part.compute_level.value)
-                    if isinstance(part, MemoryLevel):
-                        max_level = max(max_level, part.memory_level.value)
-                    
-                # add the missing scope
-                body = MemoryLevel(max_level, AtomBlock(Evaluate(0)), list(sub_trees))
-                body.set_scope(cur.ctx.scope)
-            else:
-                # all the parts are not Arch nodes
-                body = sub_trees[-1]
-                for i in range(len(sub_trees) - 1):
-                    body = SeqBlock(
-                        sub_trees[len(sub_trees) - i - 2], body)
+            body = self.build_on_tile_subtrees(sub_trees, cur)
         else:
             body = Evaluate(0)
         if not self.lower_to_tiles:
@@ -612,7 +639,7 @@ class IRBuilderContext(object):
                 "scope", Var("int32"), cur.ctx.scope, body
             )
         return body
-    
+
     def build_on_alloc_block(self, sub_trees, cur):
         if len(sub_trees) > 0:
             body = sub_trees[-1]
@@ -624,10 +651,16 @@ class IRBuilderContext(object):
         body = NdAllocBlock(
             cur.ctx.array.var, cur.ctx.array.shape, cur.ctx.array.scope, body)
         return body
-    
+
     def build_on_stmt_block(self, sub_trees, cur):
         assert len(sub_trees) == 0
-        return cur.ctx.stmt
+        if self.lower_to_tiles:
+            assert isinstance(cur.ctx.stmt, NdStore)
+            stmt_level = ComputeLevel(0, _to_block(cur.ctx.stmt), [])
+            stmt_level.set_produce_var(cur.ctx.stmt.mem_ref.var)
+            return stmt_level
+        else:
+            return cur.ctx.stmt
         # if len(sub_trees) == 1:
         #     body = sub_trees[0]
         #     body = SeqBlock(cur.ctx.stmt, body)
@@ -635,7 +668,7 @@ class IRBuilderContext(object):
         # else:
         #     body = cur.ctx.stmt
         #     return body
-        
+
     def build_on_remap_block(self, sub_trees, cur):
         if len(sub_trees) > 0:
             body = sub_trees[-1]
@@ -735,6 +768,25 @@ def arch_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=None):
             reverse_relation[vv.var] = k.var
     body = remap_tiled_loops(body, reverse_relation)
     return body
+
+
+def arch_build(func, tensor_inputs=None, scalar_inputs=None, ctx=None, target="tileflow"):
+    if not isinstance(func, cir.Arch):
+        assert tensor_inputs is not None
+        ctx = IRBuilderContext() if ctx is None else ctx
+        assert isinstance(ctx, IRBuilderContext)
+        kernel = arch_lower(func, tensor_inputs,
+                            scalar_inputs=scalar_inputs, ctx=ctx)
+    else:
+        assert ctx is not None and isinstance(ctx, IRBuilderContext)
+        kernel = func
+
+    if target == "tileflow":
+        code = codegen_tileflow(kernel)
+    else:
+        raise NotImplementedError()
+
+    return code
 
 
 def program_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=None):

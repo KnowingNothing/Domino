@@ -21,9 +21,9 @@ class NameGenerator(object):
         parts = hint.split("_")
         if parts[0] not in cls.name_cache:
             cls.name_cache[parts[0]] = 0
-            return parts[0] + f"_{0}"
+            return parts[0]
         else:
-            v = cls.name_cache[parts[0]] + 1
+            v = cls.name_cache[parts[0]]
             cls.name_cache[parts[0]] += 1
             return parts[0] + f"_{v}"
 

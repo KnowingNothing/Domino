@@ -54,6 +54,7 @@ class MemoryLevelNode : public ArchNode {
   Block block;
   std::vector<Arch> sub_levels;
   std::string scope{""};
+  std::string annotation{""};
 };
 
 using MemoryLevel = Ref<MemoryLevelNode>;
@@ -88,6 +89,7 @@ class ComputeLevelNode : public ArchNode {
 
   Block block;
   std::vector<Arch> sub_levels;
+  Var produce_var;
 };
 
 using ComputeLevel = Ref<ComputeLevelNode>;

@@ -24,15 +24,17 @@ def self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k
                    name="L", dtype=Q.dtype)
     M = ctx.Array([batch_size, num_heads, seq_len], name="M", dtype=L.dtype)
 
-    ctx.spatial(m0)
-    ctx.spatial(n0)
-    ctx.spatial(b1)
-    ctx.spatial(h1)
+    # ctx.spatial(m0)
+    # ctx.spatial(n0)
+    # ctx.spatial(b1)
+    # ctx.spatial(h1)
+    for loop in [m0, l0, r10, h0, r20, r30]:
+        ctx.spatial(loop)
 
     def L1_bmm1():
         with ctx.tile("L1", [b1, h1, m1, l1]):
-            with ctx.tile("L0", [b0, h0, m0, l0]):
-                L[b, h, m, l] = dir.const(0, L.dtype)
+            # with ctx.tile("L0", [b0, h0, m0, l0]):
+            #     L[b, h, m, l] = dir.const(0, L.dtype)
             with ctx.tile("L0", [r11, b0, h0, m0, l0, r10]):
                 L[b, h, m, l] = L[b, h, m, l] + \
                     Q[b, h, m, r1] * K[b, h, l, r1]
@@ -40,8 +42,8 @@ def self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k
     def L1_softmax():
         def L1_max():
             with ctx.tile("L1", [b1, h1, m1]):
-                with ctx.tile("L0", [b0, h0, m0]):
-                    M[b, h, m] = L[b, h, m, 0]
+                # with ctx.tile("L0", [b0, h0, m0]):
+                #     M[b, h, m] = L[b, h, m, 0]
                 with ctx.tile("L0", [r21, b0, h0, m0, r20]):
                     M[b, h, m] = dir.max(M[b, h, m], L[b, h, m, r2])
 
@@ -53,8 +55,8 @@ def self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k
 
         def L1_sum():
             with ctx.tile("L1", [b1, h1, m1]):
-                with ctx.tile("L0", [b0, h0, m0]):
-                    M[b, h, m] = dir.const(0, L.dtype)
+                # with ctx.tile("L0", [b0, h0, m0]):
+                #     M[b, h, m] = dir.const(0, L.dtype)
                 with ctx.tile("L0", [r31, b0, h0, m0, l0, r30]):
                     M[b, h, m] = M[b, h, m] + L[b, h, m, r3]
 
@@ -70,8 +72,8 @@ def self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k
 
     def L1_bmm2():
         with ctx.tile("L1", [b1, h1, m1, n1]):
-            with ctx.tile("L0", [b0, h0, m0, n0]):
-                Output[b, h, m, n] = dir.const(0, Output.dtype)
+            # with ctx.tile("L0", [b0, h0, m0, n0]):
+            #     Output[b, h, m, n] = dir.const(0, Output.dtype)
             with ctx.tile("L0", [r41, b0, h0, m0, n0, r40]):
                 Output[b, h, m, n] = Output[b, h, m, n] + \
                     L[b, h, m, r4] * V[b, h, n, r4]
@@ -105,3 +107,5 @@ if __name__ == "__main__":
         return self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k)
     kernel = dir.arch_lower(static_func, [Q, K, V, Output], ctx=ctx)
     dir.print_ir(kernel)
+    kernel = dir.arch_build(kernel, ctx=ctx, target="tileflow")
+    print(kernel)
