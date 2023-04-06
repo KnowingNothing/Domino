@@ -274,7 +274,8 @@ void bindIR(py::module_& m) {
       .value("Reduce", IterTypeKind::kReduce)
       .value("Unroll", IterTypeKind::kUnroll)
       .value("Zigzag", IterTypeKind::kZigzag)
-      .value("Tensorized", IterTypeKind::kTensorized);
+      .value("Tensorized", IterTypeKind::kTensorized)
+      .value("Hybrid", IterTypeKind::kHybrid);
 
   py::class_<IteratorNode, Iterator>(ir_m, "Iterator", pyExpr)
       .def(py::init<Var, Range, IterTypeKind>())
@@ -465,7 +466,8 @@ void bindIR(py::module_& m) {
       .def_readwrite("block", &MemoryLevelNode::block)
       .def_readwrite("sub_levels", &MemoryLevelNode::sub_levels)
       .def_readwrite("scope", &MemoryLevelNode::scope)
-      .def_readwrite("annotation", &MemoryLevelNode::annotation);
+      .def_readwrite("annotation", &MemoryLevelNode::annotation)
+      .def_readwrite("split_point", &MemoryLevelNode::split_point);
 
   py::class_<ComputeLevelNode, ComputeLevel>(ir_m, "ComputeLevel", pyArch)
       .def(py::init<ConstInt, Block, std::vector<Arch>>())

@@ -74,14 +74,31 @@ std::string CodeGenTileFlow::ImplVisit(MemoryLevel op) {
       if (list.defined()) {
         std::ostringstream factors;
         std::ostringstream perm;
+        std::unordered_map<std::string, int> factor_map;
         for (auto it : list->value_list) {
           Iterator iter = it.as<IteratorNode>();
           ASSERT(iter.defined());
-          factors << " " << renaming(Visit(iter->var)) << "=" << Visit(iter->range->extent);
-          perm << renaming(Visit(iter->var));
+          std::string name = renaming(Visit(iter->var));
+          ConstInt factor = iter->range->extent.as<ConstIntNode>();
+          ASSERT(factor.defined());
+          if (factor_map.count(name)) {
+            factor_map[name] *= factor->value;
+          } else {
+            factor_map[name] = factor->value;
+          }
           if (!visit.count(iter->var)) {
             loops.push_back(iter);
             visit.insert(iter->var);
+          }
+        }
+        for (auto it : list->value_list) {
+          Iterator iter = it.as<IteratorNode>();
+          ASSERT(iter.defined());
+          std::string name = renaming(Visit(iter->var));
+          if (factor_map.count(name)) {
+            factors << " " << name << "=" << factor_map[name];
+            perm << renaming(Visit(iter->var));
+            factor_map.erase(name);
           }
         }
         loop_table_[op] = loops;

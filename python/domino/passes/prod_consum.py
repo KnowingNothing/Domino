@@ -67,6 +67,9 @@ class ProdConsumGraph(object):
 
     def num_nodes(self):
         return len(self.nodes)
+    
+    def is_input_tensor(self, tensor):
+        return tensor not in self.read_links
 
     def dominators(self):
         dom_nodes = nx.immediate_dominators(

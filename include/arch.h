@@ -55,6 +55,7 @@ class MemoryLevelNode : public ArchNode {
   std::vector<Arch> sub_levels;
   std::string scope{""};
   std::string annotation{""};
+  int split_point{1};
 };
 
 using MemoryLevel = Ref<MemoryLevelNode>;

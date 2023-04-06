@@ -42,6 +42,12 @@ std::string iter_type_to_string(IterTypeKind kind) {
     case IterTypeKind::kZigzag:
       return "zigzag";
       break;
+    case IterTypeKind::kTensorized:
+      return "tensorized";
+      break;
+    case IterTypeKind::kHybrid:
+      return "hybrid";
+      break;
     default:
       throw std::runtime_error(fmt::format("IterType not known: {}", int(kind)));
   }

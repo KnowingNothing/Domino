@@ -30,6 +30,9 @@ class MemoryLevel(ir.MemoryLevel, Arch):
 
     def set_annotation(self, annotation: str):
         self.annotation = annotation
+        
+    def set_split_point(self, split_point: int):
+        self.split_point = split_point
 
 
 class ComputeLevel(ir.ComputeLevel, Arch):

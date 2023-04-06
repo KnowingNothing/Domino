@@ -8,9 +8,41 @@ from ..passes import (get_input_tensor_vars, ProdConsumGraph,
 from typing import List, Union, Any, Optional
 
 
-__all__ = ["NameGenerator", "ReduceOp", "ElemOp", "Tensor", "TensorView", "ConstTensor", "Loop", "SpatialLoop",
-           "ReduceLoop", "TensorizedLoop", "SLoop", "RLoop", "TLoop", "make_prod_consum_graph",
-           "max", "cast", "pack_value", "clip", "sqrt", "exp", "make_const", "const", ]
+__all__ = [
+    "NameGenerator",
+    "ReduceOp",
+    "ElemOp",
+    "Tensor",
+    "TensorView",
+    "ConstTensor",
+    "Loop",
+    "SpatialLoop",
+    "ReduceLoop",
+    "TensorizedLoop",
+    "SLoop",
+    "RLoop",
+    "TLoop",
+    "make_prod_consum_graph",
+    "max",
+    "cast",
+    "pack_value",
+    "clip",
+    "sqrt",
+    "exp",
+    "make_const",
+    "const",
+    "SyntaxContext",
+    "BlockContext",
+    "ForBlockContext",
+    "StmtBlockContext",
+    "TileBlockContext",
+    "AllocBlockContext",
+    "ReMapBlockContext",
+    "ScopeBlockContext",
+    "TreeContainer",
+    "LoopRelation",
+    "SplitRelation",
+    "Array"]
 
 
 class NameGenerator(object):
@@ -53,7 +85,8 @@ class Tensor(object):
             self,
             shape: List[Union[int, Expr]],
             name: str = "T",
-            dtype: Union[DType, str] = "float32"):
+            dtype: Union[DType, str] = "float32",
+            ctx = None):
         self.shape = shape
         self.name = NameGenerator.gen_name(name)
         self.dtype = dtype
@@ -62,6 +95,7 @@ class Tensor(object):
         self.updates: List[Compute] = []
         # FIXME: how to avoid global tensor cache?
         self.tensor_cache[self.var] = self
+        self.ctx = ctx
 
     def is_const(self):
         return False
@@ -119,6 +153,11 @@ class Tensor(object):
             self.init = compute
         else:
             self.updates.append(compute)
+        # for ir_builder
+        if self.ctx is not None:
+            def store_func():
+                return NdLoad(MemRef(self.var, 0), new_keys)
+            self.ctx.store(value, store_func)
 
     def Init(self, keys, value):
         assert self.init is None
@@ -440,7 +479,7 @@ class Compute(object):
 class Loop(object):
     loop_cache = {}
 
-    def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name="l", iter_kind=IterTypeKind.Spatial):
+    def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name="l", iter_kind=IterTypeKind.Hybrid):
         if isinstance(r, (int, ir.Expr)):
             self.dom = Range(0, r, 1)
         elif isinstance(r, (list, tuple)):
@@ -643,3 +682,352 @@ const = make_const
 def cast(dtype, value):
     dtype = DType.make(dtype)
     return Cast(dtype, value)
+
+
+class SyntaxContext(object):
+    def __init__(self, ir_builder) -> None:
+        self.ir_builder = ir_builder
+
+
+class BlockContext(SyntaxContext):
+    def __enter__(self):
+        raise NotImplementedError()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        raise NotImplementedError()
+
+
+class Array(object):
+    def __init__(self, ir_builder, var, shape, scope="global", origin: Optional["Array"] = None, slices=None):
+        self.ir_builder = ir_builder
+        self.var = var
+        self.shape = shape
+        self.scope = scope
+        self.origin = origin
+        self.slices = tuple(slice(0, s, 1)
+                            for s in self.shape) if slices is None else tuple(slices)
+        assert len(self.slices) == len(self.shape)
+
+    @property
+    def dtype(self):
+        return self.var.dtype
+
+    def ref(self, *indices):
+        return ArrayRef(self.var, indices)
+
+    def calculate_slice_indices(self, indices):
+        # FIXME: don't support slices in indices
+        if self.origin is None:
+            return indices
+        origin_indices = []
+        counter = 0
+        length = len(indices)
+        for s in self.slices:
+            if isinstance(s, slice):
+                assert counter < length
+                start = s.start if s.start is not None else 0
+                step = s.step if s.step is not None else 1
+                idx = start + indices[counter] * step
+                counter += 1
+                origin_indices.append(idx)
+            else:
+                origin_indices.append(s)
+        return self.origin.calculate_slice_indices(origin_indices)
+
+    def __str__(self):
+        return f"Array({self.var.id.value}, {self.shape}, {self.var.dtype}, {self.scope})"
+
+    def __repr__(self):
+        return str(self)
+
+    def __getitem__(self, keys):
+        if not isinstance(keys, tuple):
+            keys = (keys,)
+        assert len(keys) == len(self.shape), f"{keys} vs {self.shape}"
+        new_shape = []
+        indices = []
+        for i, k in enumerate(keys):
+            if isinstance(k, slice):
+                start = 0 if k.start is None else k.start
+                stop = self.shape[i] if k.stop is None else k.stop
+                step = 1 if k.step is None else k.step
+                # TODO: better index bound check
+                start_value = start.value if isinstance(
+                    start, ConstInt) else start
+                stop_value = stop.value if isinstance(stop, ConstInt) else stop
+                shape_value = self.shape[i].value if isinstance(
+                    self.shape[i], ConstInt) else self.shape[i]
+                if all(isinstance(x, int) for x in [start_value, stop_value, shape_value]):
+                    assert start_value >= 0 and start_value < stop_value
+                    assert stop_value < shape_value
+
+                extent = (stop - start) // step
+                new_shape.append(extent)
+            else:
+                if isinstance(k, Loop):
+                    k = k.var
+                # TODO: better index bound check
+                value_k = k
+                if isinstance(k, ConstInt):
+                    value_k = k.value
+                value_s = self.shape[i]
+                if isinstance(self.shape[i], ConstInt):
+                    value_s = self.shape[i].value
+                if isinstance(value_k, int) and isinstance(value_s, int):
+                    assert value_k < value_s and value_k >= 0
+
+                indices.append(k)
+        if len(new_shape):
+            return Array(self.ir_builder, self.var, new_shape, scope=self.scope, origin=self, slices=keys)
+        else:
+            return NdLoad(MemRef(self.var, 0), self.calculate_slice_indices(indices))
+
+    def __setitem__(self, keys, value):
+        if not isinstance(keys, tuple):
+            keys = (keys,)
+        assert len(keys) == len(self.shape)
+        new_shape = []
+        indices = []
+        for i, k in enumerate(keys):
+            if isinstance(k, slice):
+                start = 0 if k.start is None else k.start
+                stop = self.shape[i] if k.stop is None else k.stop
+                step = 1 if k.step is None else k.step
+                # TODO: better index bound check
+                start_value = start.value if isinstance(
+                    start, ConstInt) else start
+                stop_value = stop.value if isinstance(stop, ConstInt) else stop
+                shape_value = self.shape[i].value if isinstance(
+                    self.shape[i], ConstInt) else self.shape[i]
+                if all(isinstance(x, int) for x in [start_value, stop_value, shape_value]):
+                    assert start_value >= 0 and start_value < stop_value
+                    assert stop_value < shape_value
+
+                extent = (stop - start) // step
+                new_shape.append(extent)
+            else:
+                # TODO: better index bound check
+                value_k = k
+                if isinstance(k, ConstInt):
+                    value_k = k.value
+                value_s = self.shape[i]
+                if isinstance(self.shape[i], ConstInt):
+                    value_s = self.shape[i].value
+                if isinstance(value_k, int) and isinstance(value_s, int):
+                    assert value_k < value_s and value_k >= 0
+
+                indices.append(k)
+        if len(new_shape):
+            raise NotImplementedError()
+            return Array(self.ir_builder, self.var, new_shape, scope=self.scope, origin=self, slices=keys)
+        else:
+            def store_func(): return self.__getitem__(keys)
+            self.ir_builder.store(value, store_func)
+            # return NdStore(MemRef(self.var, 0), self.calculate_slice_indices(indices), value)
+
+
+class AllocBlockContext(BlockContext):
+    def __init__(self, ir_builder, shape, scope="global", dtype="float32", name=""):
+        super(AllocBlockContext, self).__init__(ir_builder)
+        var = Var(dtype, name)
+        self.array = Array(ir_builder, var, shape, scope=scope)
+        self.ir_builder.bind_array(var, self.array)
+        node = TreeContainer(self)
+        self.ir_builder.stack[-1].add_child(node)
+        self.ir_builder.stack.append(node)
+
+
+class ForBlockContext(BlockContext):
+    def __init__(self, ir_builder, iter_type, names=None, ranges=None, bindings=None):
+        super(ForBlockContext, self).__init__(ir_builder)
+        self.iter_type = iter_type
+        if names is None:
+            raise ValueError("Please initialize for loops with names")
+        if ranges is None:
+            raise ValueError("Please initialize for loops with ranges")
+        names = [names] if not isinstance(names, (list, tuple)) else names
+        ranges = [ranges] if not isinstance(ranges, (list, tuple)) else ranges
+
+        self.names = []
+        for name in names:
+            if isinstance(name, str):
+                self.names.append(name)
+            elif isinstance(name, ConstString):
+                self.names.append(name.value)
+            else:
+                raise ValueError(
+                    "Please use string or ConstString type for loop names.")
+
+        if ranges is None:
+            raise ValueError("Please initialize for loops with ranges")
+        self.ranges = []
+        for r in ranges:
+            if isinstance(r, range):
+                start = 0 if r.start is None else r.start
+                stop = r.stop
+                step = 1 if r.step is None else r.step
+                self.ranges.append(Range(start, stop - start, step))
+            elif isinstance(r, Range):
+                self.ranges.append(r)
+            else:
+                raise ValueError(
+                    "Please use range or Range type for loop ranges.")
+
+        if len(names) != len(ranges):
+            raise ValueError(
+                "Please provide the same number of loop names and ranges.")
+        if bindings is None:
+            self.bindings = [ConstString("") for _ in names]
+        else:
+            self.bindings = []
+            for b in bindings:
+                if isinstance(b, str):
+                    self.bindings.append(ConstString(b))
+                elif isinstance(b, ConstString):
+                    self.bindings.append(b)
+                else:
+                    raise ValueError(
+                        "Please use string or ConstString type for loop bindings.")
+
+        self.var_list = [Var("int32", name) for name in self.names]
+
+    def __enter__(self):
+        node = TreeContainer(self)
+        self.ir_builder.stack[-1].add_child(node)
+        self.ir_builder.stack.append(node)
+
+        ret = self.var_list
+        if len(ret) == 1:
+            return ret[0]
+        else:
+            return tuple(ret)
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        if exc_type is None:
+            while len(self.ir_builder.stack) > 0 and self.ir_builder.stack[-1].ctx != self:
+                self.ir_builder.stack.pop()
+            if self.ir_builder.stack[-1].ctx == self:
+                self.ir_builder.stack.pop()
+            return True
+        else:
+            raise RuntimeError(exc_value)
+
+
+class TileBlockContext(BlockContext):
+    def __init__(self, ir_builder, mem_level: str, loops: List[Loop], annotation: str):
+        super(TileBlockContext, self).__init__(ir_builder)
+        self.mem_level = mem_level
+        self.loops = loops
+        self.annotation = annotation
+        
+    def merge_loops(self, other: "TileBlockContext"):
+        assert self.mem_level == other.mem_level
+        assert self.annotation == other.annotation
+        visit = set()
+        for l in self.loops:
+            visit.add(l)
+        for l in other.loops:
+            if l not in visit:
+                self.loops.append(l)
+                visit.add(l)
+
+    def __enter__(self):
+        node = TreeContainer(self)
+        self.ir_builder.stack[-1].add_child(node)
+        self.ir_builder.stack.append(node)
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        if exc_type is None:
+            while len(self.ir_builder.stack) > 0 and self.ir_builder.stack[-1].ctx != self:
+                self.ir_builder.stack.pop()
+            if self.ir_builder.stack[-1].ctx == self:
+                self.ir_builder.stack.pop()
+            return True
+        else:
+            raise RuntimeError(exc_value)
+
+
+class ScopeBlockContext(BlockContext):
+    def __init__(self, ir_builder, scope: str):
+        super(ScopeBlockContext, self).__init__(ir_builder)
+        self.scope = scope
+
+    def __enter__(self):
+        node = TreeContainer(self)
+        self.ir_builder.stack[-1].add_child(node)
+        self.ir_builder.stack.append(node)
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        if exc_type is None:
+            while len(self.ir_builder.stack) > 0 and self.ir_builder.stack[-1].ctx != self:
+                self.ir_builder.stack.pop()
+            if self.ir_builder.stack[-1].ctx == self:
+                self.ir_builder.stack.pop()
+            return True
+        else:
+            raise RuntimeError(exc_value)
+
+
+# class InitBlockContext(BlockContext):
+#     def __init__(self, ir_builder, tensor_view: TensorView, value: Expr):
+#         super(InitBlockContext, self).__init__(ir_builder)
+#         self.tensor_view = tensor_view
+#         self.value = value
+#         node = TreeContainer(self)
+#         self.ir_builder.stack[-1].add_child(node)
+
+
+class StmtBlockContext(BlockContext):
+    def __init__(self, ir_builder, stmt):
+        super(StmtBlockContext, self).__init__(ir_builder)
+        self.stmt = stmt
+        node = TreeContainer(self)
+        self.ir_builder.stack[-1].add_child(node)
+
+
+class ReMapBlockContext(BlockContext):
+    def __init__(self, ir_builder, map_vars: List[MapVar]):
+        super(ReMapBlockContext, self).__init__(ir_builder)
+        for m in map_vars:
+            assert isinstance(m, MapVar)
+        self.map_vars = map_vars
+        node = TreeContainer(self)
+        self.ir_builder.stack[-1].add_child(node)
+        self.ir_builder.stack.append(node)
+
+
+class TreeContainer(object):
+    def __init__(self, ctx):
+        assert ctx is None or isinstance(ctx, SyntaxContext)
+        self.ctx = ctx
+        self.children = []
+
+    def add_child(self, child):
+        assert isinstance(child, TreeContainer)
+        self.children.append(child)
+        
+    def add_front_child(self, child):
+        assert isinstance(child, TreeContainer)
+        self.children = [child] + self.children
+
+    def is_root(self):
+        return self.ctx is None
+    
+    def walk(self, callback):
+        callback(self)
+        for c in self.children:
+            c.walk(callback)
+            
+    def post_order_walk(self, callback):
+        for c in self.children:
+            c.post_order_walk(callback)
+        callback(self)
+
+
+class LoopRelation(object):
+    pass
+
+
+class SplitRelation(LoopRelation):
+    def __init__(self, sub_loops) -> None:
+        self.sub_loops = sub_loops

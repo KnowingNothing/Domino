@@ -851,7 +851,8 @@ enum class IterTypeKind : int {
   kReduce = 1,
   kUnroll = 2,
   kZigzag = 3,
-  kTensorized = 4
+  kTensorized = 4,
+  kHybrid = 5,
 };
 
 std::string iter_type_to_string(IterTypeKind kind);
