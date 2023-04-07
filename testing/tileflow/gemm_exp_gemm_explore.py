@@ -1,6 +1,7 @@
 import domino.program_ir as dir
 import domino.analysis as ana
 import domino.accelerator as acc
+import domino.runtime as rt
 
 
 def get_hardware():
@@ -92,8 +93,10 @@ if __name__ == "__main__":
         with dir.NameScope():
             gemm_exp_gemm_compute(ctx, tA, tB, tC, tD, tE, tF, *[M, N, K, L])
 
-    for plan in plans:
+    i = 0
+    for plan in plans[i:i+1]:
         kernel = dir.arch_lower(
             static_func, [tA, tB, tC, tD, tE, tF], plan=plan, final_tensor=tF)
         kernel = dir.arch_build(kernel, target="tileflow")
         # print(kernel)
+        rt.run_tileflow(workload, hw_config, kernel, tileflow_path="/home/zchno/TileFlow/build/bin/tileflow")
