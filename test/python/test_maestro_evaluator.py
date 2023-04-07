@@ -8,7 +8,7 @@ def test_find_path():
 
 
 def test_example_mapping_nvdla():
-    # NVDLA-stype dataflow
+    # MaestroNVDLA-stype dataflow
     mapping_contents = """
     Network sample_net {
     Layer Conv2d-1 {

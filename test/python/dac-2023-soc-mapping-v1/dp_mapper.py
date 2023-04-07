@@ -9,8 +9,8 @@ import time
 from domino.utils import ONNXConvertor
 from domino.graph_pass import set_graph_precision, GraphPrinter, GraphVisitor
 from domino.graph_ir import Op, SubGraph, Graph, Tensor, Attribute
-from domino.base import AcceleratorBase, AccTask, AccStream, SoCBase
-from domino.accelerator import ConvAccelerator, MeshSoC, NVDLA, GemmTPU, DepthwiseShiDianNao
+from domino.base import MaestroAcceleratorBase, AccTask, AccStream, SoCBase
+from domino.accelerator import MaestroConvAccelerator, MeshSoC, MaestroNVDLA, MaestroGemmTPU, MaestroDepthwiseShiDianNao
 from domino.program_ir import ConstInt, ConstUInt, ConstFloat, ConstString, ExprList
 import matplotlib.pyplot as plt
 from domino import global_timer
@@ -159,7 +159,7 @@ def main():
     placer = SimplePlacer()
     mapper = DPMapper(grouper, placer)
     cg = ComputationGraph(graph, mapper)
-    accs = [[NVDLA("NVDLA(0)", 2), DepthwiseShiDianNao("ShiDianNao(1)"), GemmTPU("GemmTPU")]]
+    accs = [[MaestroNVDLA("MaestroNVDLA(0)", 2), MaestroDepthwiseShiDianNao("ShiDianNao(1)"), MaestroGemmTPU("MaestroGemmTPU")]]
     for acc_list in accs:
         for acc in acc_list:
             print ("acc is", acc.name, acc.num_streams())

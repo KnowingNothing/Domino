@@ -1,11 +1,11 @@
-from ..base import SoCBase, AcceleratorBase
+from ..base import SoCBase, MaestroAcceleratorBase
 import networkx as nx
 from typing import List
 
 
 class MeshSoC(SoCBase):
     # TODO: OFFCHIP HIGH 120, LOW 60
-    def __init__(self, accelerator_matrix: List[List[AcceleratorBase]], on_chip_bw=32, off_chip_nearest_bw=3.2, name = 'MeshSoC') -> None:
+    def __init__(self, accelerator_matrix: List[List[MaestroAcceleratorBase]], on_chip_bw=32, off_chip_nearest_bw=3.2, name = 'MeshSoC') -> None:
         accelerator_graph = nx.DiGraph()
         self.on_chip_bw = on_chip_bw
         self.off_chip_nearest_bw = off_chip_nearest_bw

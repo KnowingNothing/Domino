@@ -553,6 +553,10 @@ void bindPass(py::module_& m) {
   /// bind get_input_tensor_indices
   pass_m.def("get_input_tensor_indices", &pass::GetInputTensorIndices,
              "Get the indics of an input tensor.");
+
+  /// bind generate_tileflow_op
+  pass_m.def("generate_tileflow_op", &pass::GenerateTileFlowOp,
+             "Generate the TileFlow operator description.");
 }
 
 void bindAnalysis(py::module_& m) {

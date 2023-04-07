@@ -12,8 +12,8 @@ import pickle as pkl
 from domino.utils import ONNXConvertor
 from domino.graph_pass import set_graph_precision, GraphPrinter, GraphVisitor
 from domino.graph_ir import Op, SubGraph, Graph, Tensor, Attribute
-from domino.base import AcceleratorBase, AccTask, AccStream, SoCBase
-from domino.accelerator import ConvAccelerator, MeshSoC, NVDLA, GemmTPU, DepthwiseShiDianNao, ConvShiDianNao
+from domino.base import MaestroAcceleratorBase, AccTask, AccStream, SoCBase
+from domino.accelerator import MaestroConvAccelerator, MeshSoC, MaestroNVDLA, MaestroGemmTPU, MaestroDepthwiseShiDianNao, MaestroConvShiDianNao
 from domino.program_ir import ConstInt, ConstUInt, ConstFloat, ConstString, ExprList
 import matplotlib.pyplot as plt
 from domino import global_timer
@@ -616,7 +616,7 @@ def main():
     placer = SimplePlacer()
     mapper = EvolutionMapper(placer)
     cg = ComputationGraph(graph, mapper)
-    accs = [[NVDLA("NVDLA(0)", 2), DepthwiseShiDianNao("ShiDianNao(1)"), GemmTPU("GemmTPU")]]
+    accs = [[MaestroNVDLA("MaestroNVDLA(0)", 2), MaestroDepthwiseShiDianNao("ShiDianNao(1)"), MaestroGemmTPU("MaestroGemmTPU")]]
     soc = MeshSoC(accs)
     mapper.fuzz_test(soc)
     # complete_time = cg.map(soc)
@@ -630,6 +630,6 @@ if __name__ == "__main__":
     random.seed(3)
     os.system("mkdir -p .cache")
     os.system("mkdir -p pics")
-    AcceleratorBase.load_cache()
+    MaestroAcceleratorBase.load_cache()
     main()
-    AcceleratorBase.store_cache()
+    MaestroAcceleratorBase.store_cache()

@@ -2,10 +2,29 @@ import os
 import copy
 import pickle as pkl
 import networkx as nx
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 from collections import OrderedDict
 import numpy as np
 from .. import global_timer
+
+
+class HardwareLevel(object):
+    def __init__(self) -> None:
+        self.sub_levels = []
+
+    def add_level(self, *level):
+        if len(level) == 0:
+            return
+        if len(level) == 1:
+            if isinstance(level[0], list):
+                self.sub_levels.extend(level[0])
+            else:
+                self.sub_levels.append(level[0])
+        else:
+            for l in level:
+                assert isinstance(l, HardwareLevel)
+                self.sub_levels.append(l)
+
 
 
 class AccTask(object):
@@ -70,7 +89,8 @@ class AccTask(object):
     def __repr__(self) -> str:
         return str(self)
 
-# communication time 
+# communication time
+
 
 class AccStream(object):
     def __init__(self, idx) -> None:
@@ -94,10 +114,11 @@ class AccStream(object):
         self._stream.append(task)
 
     def retire(self, task, comm_time, compute_time):
-        elapsed_time = comm_time + compute_time 
+        elapsed_time = comm_time + compute_time
         assert len(self._to_commit) > 0
         assert task == self._to_commit[-1], f"stream: {self.idx}: {task} vs {self._to_commit[-1]}"
-        self.logs.append([task, self._elapsed_time, {'elapsed': elapsed_time, 'compute': compute_time, 'communication': comm_time}])
+        self.logs.append([task, self._elapsed_time, {
+                         'elapsed': elapsed_time, 'compute': compute_time, 'communication': comm_time}])
         self._to_commit = self._to_commit[:-1]
         self._elapsed_time += elapsed_time
         return self._elapsed_time
@@ -125,25 +146,29 @@ class AccStream(object):
         self._stream = self._stream[1:]
 
     def report(self):
-        occupation = sum([x[2]['elapsed'] for x in self.logs]) / self._elapsed_time 
-        comm_rate = sum([x[2]['communication'] for x in self.logs]) / self._elapsed_time 
-        compute_portion = sum([x[2]['compute'] for x in self.logs]) / self._elapsed_time 
+        occupation = sum([x[2]['elapsed']
+                         for x in self.logs]) / self._elapsed_time
+        comm_rate = sum([x[2]['communication']
+                        for x in self.logs]) / self._elapsed_time
+        compute_portion = sum([x[2]['compute']
+                              for x in self.logs]) / self._elapsed_time
         print(
             f"\tstream {self.idx}: {len(self.logs)} task, {occupation} occupied, {comm_rate} communication, {compute_portion} computation")
-    
+
     def profile(self):
         compute_time = sum(x[2]['compute'] for x in self.logs)
         comm_time = sum(x[2]['communication'] for x in self.logs)
-        idle_time = self._elapsed_time - compute_time - comm_time 
+        idle_time = self._elapsed_time - compute_time - comm_time
         return {'compute': compute_time, 'communication': comm_time, 'idle': idle_time}
 
-class AcceleratorBase(object):
+
+class MaestroAcceleratorBase(object):
 
     def __init__(self, name, n_stream, supported_task, freq=200, num_pes=65536, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000) -> None:
         print(f"create {name} with {n_stream} streams")
         self.name = name
         self.supported_task = supported_task
-        self.freq = freq * 1e6 # Hz
+        self.freq = freq * 1e6  # Hz
         self.num_pes = num_pes
         self.noc_bw = noc_bw  # byte/cycle
         self.off_chip_bw = off_chip_bw  # byte/s
@@ -157,7 +182,7 @@ class AcceleratorBase(object):
         for _ in range(n_stream - 1):
             self.add_new_stream()
         self.total_energy = 0  # nJ
-        
+
         # for visualization
         self.pe_usages = []
 
@@ -226,7 +251,8 @@ class AcceleratorBase(object):
             nonlocal phase
             nonlocal cur_pe_usage
             sync_time = 0
-            old_time = max(self.get_stream(idx)._elapsed_time for idx in range(self.num_streams()))
+            old_time = max(self.get_stream(
+                idx)._elapsed_time for idx in range(self.num_streams()))
 
             pe_offset = 0
             pe_amount = 0
@@ -244,7 +270,7 @@ class AcceleratorBase(object):
 
                 task.pe_start = pe_offset
                 pe_usage = self.spatial_used_pes(*task.get_params())
-                pe_offset += pe_usage 
+                pe_offset += pe_usage
                 pe_amount += pe_usage * compute_time_cost
                 comm_amount += pe_usage * fetch_data_cost
                 task.pe_finish = pe_offset
@@ -253,9 +279,9 @@ class AcceleratorBase(object):
                 task.acc = self.name
                 task.stream = idx
             phase_time = sync_time - old_time
-            self.pe_usages.append({'occupancy': pe_offset / self.num_pes, 
-                                   'amount': pe_amount, 
-                                   'comm_amount': comm_amount, 
+            self.pe_usages.append({'occupancy': pe_offset / self.num_pes,
+                                   'amount': pe_amount,
+                                   'comm_amount': comm_amount,
                                    'phase_amount': phase_time * self.num_pes})
             self.total_energy += phase_time * max_power
             for idx in range(self.num_streams()):
@@ -310,18 +336,18 @@ class AcceleratorBase(object):
         file = os.path.join(dir, "accelerator.pkl")
         if os.path.exists(file):
             with open(file, 'rb') as f:
-                AcceleratorBase.compute_cache = pkl.load(f)
+                MaestroAcceleratorBase.compute_cache = pkl.load(f)
 
     @staticmethod
     def store_cache(dir: str = './.cache/'):
         file = os.path.join(dir, "accelerator.pkl")
         if os.path.exists(file):
             with open(file, 'wb') as f:
-                pkl.dump(AcceleratorBase.compute_cache, f)
+                pkl.dump(MaestroAcceleratorBase.compute_cache, f)
 
     def report(self):
         print(f"{self.name}: ")
-        print (f'\tEnergy consumption {self.get_current_energy_consumption()}')
+        print(f'\tEnergy consumption {self.get_current_energy_consumption()}')
         for stream_id in range(self.num_streams()):
             self.get_stream(stream_id).report()
 
@@ -330,12 +356,23 @@ class AcceleratorBase(object):
         for idx in range(self.num_streams()):
             stream = self.get_stream(idx)
             stream_data = stream.profile()
-            for k in data: 
+            for k in data:
                 data[k] += stream_data[k]
-        return data 
+        return data
+
+
+class TileFlowAcceleratorBase(object):
+    def __init__(self, name: str, version: Optional[float] = None):
+        self.name = name
+        self.version = version
+        self.hardware_level = None
+
+    def set_hardware_level(self, hardware_level):
+        self.hardware_level = hardware_level
+
 
 class SoCBase(object):
-    def __init__(self, accelerator_graph: nx.DiGraph, name = 'SoC') -> None:
+    def __init__(self, accelerator_graph: nx.DiGraph, name='SoC') -> None:
         self.accelerator_graph = accelerator_graph
         self.name = name
         self.elapsed_time = 0
@@ -408,7 +445,7 @@ class SoCBase(object):
         acc_name, task = curr_task
         acc = self.accelerator_graph.nodes[acc_name]['acc']
         params = task.get_params()
-                     
+
         fetch_data_cost = max(
             task_from.get_output_data_volume() / 1e9 /
             self.accelerator_graph[acc_from][acc_name]['bandwidth']
@@ -419,22 +456,23 @@ class SoCBase(object):
 
         return fetch_data_cost + compute_time_cost, acc.spatial_used_pes(*params)
 
-    def eval_communication(self, 
-        curr_task: Tuple[AccTask, "AcceleratorName"], 
-        input_tasks: List[Tuple[AccTask, "AcceleratorName"]]
-    ):
-        acc_name, _  = curr_task
+    def eval_communication(self,
+                           curr_task: Tuple[AccTask, "AcceleratorName"],
+                           input_tasks: List[Tuple[AccTask, "AcceleratorName"]]
+                           ):
+        acc_name, _ = curr_task
         fetch_data_cost = sum(
-            task_from.get_output_data_volume() / 1e9 / self.accelerator_graph[acc_from][acc_name]['bandwidth']
+            task_from.get_output_data_volume() / 1e9 /
+            self.accelerator_graph[acc_from][acc_name]['bandwidth']
             for acc_from, task_from in input_tasks
         ) if len(input_tasks) else 0
-        
+
         return fetch_data_cost
 
     def eval_computation(self, task, acc_name):
         acc = self.accelerator_graph.nodes[acc_name]['acc']
         return acc.evaluate_compute(*task.get_params())[0]
-    
+
     def eval_pe_usage(self, task, acc_name):
         acc = self.accelerator_graph.nodes[acc_name]['acc']
         return acc.spatial_used_pes(*task.get_params())
@@ -454,32 +492,31 @@ class SoCBase(object):
     def report(self):
         for _, acc in self.accelerator_graph.nodes.data('acc'):
             acc.report()
-            
+
     def store_pe_curve(self, path):
         data = {}
         for name, acc in self.accelerator_graph.nodes.data('acc'):
-            data[name] = {'amount': self.elapsed_time * acc.num_pes, 
-                          'compute_amount': sum(x['amount'] for x in acc.pe_usages), 
+            data[name] = {'amount': self.elapsed_time * acc.num_pes,
+                          'compute_amount': sum(x['amount'] for x in acc.pe_usages),
                           'comm_amount': sum(x['comm_amount'] for x in acc.pe_usages),
                           'phase_amount': sum(x['phase_amount'] for x in acc.pe_usages),
                           'occupancy': np.mean([x['occupancy'] for x in acc.pe_usages])}
         with open(path, 'wb') as f:
             pkl.dump(data, f)
 
-
     def get_resource_limit(self, acc: str):
         acc = self.accelerator_graph.nodes[acc]['acc']
         return {"num_stream": acc.num_streams(), 'num_pes': acc.num_pes}
-    
+
     def get_all_resource_limit(self):
-        return {name: [acc.num_streams(), acc.num_pes] 
+        return {name: [acc.num_streams(), acc.num_pes]
                 for name, acc in self.accelerator_graph.nodes.data('acc')}
-    
+
     def get_machines(self):
         return [str(x) for x in self.accelerator_graph.nodes]
-    
+
     def profile(self):
         data = {}
         for name, acc in self.accelerator_graph.nodes.data('acc'):
             data[name] = acc.profile()
-        return {'elapsed': self.elapsed_time, 'profile': data} 
+        return {'elapsed': self.elapsed_time, 'profile': data}

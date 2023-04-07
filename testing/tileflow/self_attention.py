@@ -28,8 +28,8 @@ def self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k
     # ctx.spatial(n0)
     # ctx.spatial(b1)
     # ctx.spatial(h1)
-    for loop in [m0, l0, r10, h0, r20, r30]:
-        ctx.spatial(loop)
+    # for loop in [m0, l0, r10, h0, r20, r30]:
+    #     ctx.spatial(loop)
 
     def L1_bmm1():
         with ctx.tile("L1", [b1, h1, m1, l1]):
@@ -87,7 +87,6 @@ def self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k
 
 if __name__ == "__main__":
     ctx = dir.IRBuilderContext()
-    ctx.set_target_tileflow()
     batch_size = 64
     seq_len = 1024
     num_heads = 12
@@ -104,7 +103,8 @@ if __name__ == "__main__":
     #                num_heads, seq_len, model_k)
 
     def static_func(ctx, Q, K, V, Output):
-        return self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k)
+        with dir.NameScope():
+            return self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k)
     kernel = dir.arch_lower(static_func, [Q, K, V, Output], ctx=ctx)
     dir.print_ir(kernel)
     kernel = dir.arch_build(kernel, ctx=ctx, target="tileflow")

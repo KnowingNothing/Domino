@@ -15,7 +15,7 @@ def visualize_pe():
                     with open(f'pe_curve/{alg}_{model}_{SoC}_{bw}.pkl', 'rb') as f:
                         tmp = pkl.load(f)
                         for k in list(tmp.keys()):
-                            if 'GemmTPU' in k:
+                            if 'MaestroGemmTPU' in k:
                                 tmp[k[4:]] = tmp.pop(k)
                         data[alg] = tmp 
                 index = pd.MultiIndex.from_tuples([(j,i,k) for i in data for j in data[i] for k in data[i][j]])

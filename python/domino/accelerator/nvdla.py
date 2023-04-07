@@ -2,15 +2,15 @@ import os
 import copy
 from typing import Dict, Any
 from collections import OrderedDict
-from ..base import AcceleratorBase, AccTask
+from ..base import MaestroAcceleratorBase, AccTask
 from ..utils import run_maestro, generate_maestro_command, find_maestro
-from .conv_acc import ConvAccelerator
-from .gemm_acc import GemmAccelerator
+from .conv_acc import MaestroConvAccelerator
+from .gemm_acc import MaestroGemmAccelerator
 
 
-class NVDLA(ConvAccelerator):
+class MaestroNVDLA(MaestroConvAccelerator):
     def __init__(self, name, n_stream=1, freq=200, num_pes=128*128, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000) -> None:
-        super(NVDLA, self).__init__(name, n_stream, freq=freq, num_pes=num_pes, noc_bw=noc_bw,
+        super(MaestroNVDLA, self).__init__(name, n_stream, freq=freq, num_pes=num_pes, noc_bw=noc_bw,
                                     off_chip_bw=off_chip_bw, l1_size=l1_size, l2_size=l2_size)
 
     def get_mapping(self, H, W, P, Q, K, C, R, S, stride_h, stride_w):
@@ -50,15 +50,15 @@ class NVDLA(ConvAccelerator):
         return min(K * 64, self.num_pes)
 
     def __str__(self) -> str:
-        return f'NVDLA{self.topo_id}'
+        return f'MaestroNVDLA{self.topo_id}'
 
     def __repr__(self) -> str:
-        return f'NVDLA{self.topo_id}'
+        return f'MaestroNVDLA{self.topo_id}'
 
 
-class GemmNVDLA(GemmAccelerator):
+class MaestroGemmNVDLA(MaestroGemmAccelerator):
     def __init__(self, name, n_stream=1, freq=200, num_pes=128*128, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000) -> None:
-        super(GemmNVDLA, self).__init__(name, n_stream, freq=freq, num_pes=num_pes, noc_bw=noc_bw,
+        super(MaestroGemmNVDLA, self).__init__(name, n_stream, freq=freq, num_pes=num_pes, noc_bw=noc_bw,
                                         off_chip_bw=off_chip_bw, l1_size=l1_size, l2_size=l2_size)
 
     def get_mapping(self, M, N, K):
@@ -91,7 +91,7 @@ class GemmNVDLA(GemmAccelerator):
         return min(N * 64, self.num_pes)
 
     def __str__(self) -> str:
-        return f'GemmNVDLA{self.topo_id}'
+        return f'MaestroGemmNVDLA{self.topo_id}'
 
     def __repr__(self) -> str:
-        return f'GemmNVDLA{self.topo_id}'
+        return f'MaestroGemmNVDLA{self.topo_id}'

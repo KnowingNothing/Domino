@@ -1,6 +1,7 @@
 from dominoc import ir
 from ..type_system import DType
 from .scalar_expr import *
+from .stmt import *
 from .functional import print_ir
 from .block import _to_block
 from ..passes import (get_input_tensor_vars, ProdConsumGraph,
@@ -10,6 +11,7 @@ from typing import List, Union, Any, Optional
 
 __all__ = [
     "NameGenerator",
+    "NameScope",
     "ReduceOp",
     "ElemOp",
     "Tensor",
@@ -58,6 +60,30 @@ class NameGenerator(object):
             v = cls.name_cache[parts[0]]
             cls.name_cache[parts[0]] += 1
             return parts[0] + f"_{v}"
+        
+        
+class NameScope:
+    current = None
+    def __init__(self) -> None:
+        self.pre = None
+        self.names = None
+        
+    def __enter__(self):
+        if NameScope.current is not None:
+            NameScope.current.names = NameGenerator.name_cache
+        next_scope = NameScope()
+        next_scope.pre = NameScope.current
+        NameScope.current = next_scope
+        NameGenerator.name_cache = {}
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        if exc_type is None:
+            cur_scope = NameScope.current
+            NameScope.current = cur_scope.pre
+            NameGenerator.name_cache = cur_scope.names
+            return True
+        else:
+            raise RuntimeError(exc_value)
 
 
 class ComputeOp(object):
@@ -408,12 +434,16 @@ class TensorView(object):
 
 
 class Compute(object):
-    def __init__(self, tensor_view: TensorView, value: Expr, operation: ComputeOp, reduce_axis: List[Var]) -> None:
+    def __init__(self, tensor_view: TensorView, value: Expr, operation: ComputeOp, reduce_axis: List[Var]):
         self.tensor_view = tensor_view
         assert isinstance(value, Expr)
         self.value = value
         self.operation = operation
         self.reduce_axis = reduce_axis
+        
+    def as_stmt(self):
+        load = self.tensor_view.as_expr()
+        return NdStore(load.mem_ref, load.indices, self.value)
 
     def input_tensors(self):
         vars = get_input_tensor_vars(self.value)

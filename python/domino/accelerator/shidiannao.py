@@ -2,15 +2,15 @@ import os
 import copy
 from typing import Dict, Any
 from collections import OrderedDict
-from ..base import AcceleratorBase, AccTask
+from ..base import MaestroAcceleratorBase, AccTask
 from ..utils import run_maestro, generate_maestro_command, find_maestro
-from .conv_acc import ConvAccelerator
-from .depthwise_acc import DepthwiseAccelerator
+from .conv_acc import MaestroConvAccelerator
+from .depthwise_acc import MaestroDepthwiseAccelerator
 
 
-class DepthwiseShiDianNao(DepthwiseAccelerator):
+class MaestroDepthwiseShiDianNao(MaestroDepthwiseAccelerator):
     def __init__(self, name, n_stream=1, freq=200, num_pes=128*128, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000) -> None:
-        super(DepthwiseShiDianNao, self).__init__(name, n_stream, freq=freq, num_pes=num_pes, noc_bw=noc_bw,
+        super(MaestroDepthwiseShiDianNao, self).__init__(name, n_stream, freq=freq, num_pes=num_pes, noc_bw=noc_bw,
                                                   off_chip_bw=off_chip_bw, l1_size=l1_size, l2_size=l2_size)
 
     def get_mapping(self, H, W, P, Q, K, M, R, S, stride_h, stride_w):
@@ -45,15 +45,15 @@ class DepthwiseShiDianNao(DepthwiseAccelerator):
         return min(H * 64, self.num_pes)
 
     def __str__(self) -> str:
-        return f'DepthwiseShiDianNao{self.topo_id}'
+        return f'MaestroDepthwiseShiDianNao{self.topo_id}'
 
     def __repr__(self) -> str:
-        return f'DepthwiseShiDianNao{self.topo_id}'
+        return f'MaestroDepthwiseShiDianNao{self.topo_id}'
 
 
-class ConvShiDianNao(ConvAccelerator):
+class MaestroConvShiDianNao(MaestroConvAccelerator):
     def __init__(self, name, n_stream=1, freq=200, num_pes=128*128, noc_bw=81920000, off_chip_bw=81920000, l1_size=4000000, l2_size=24000000) -> None:
-        super(ConvShiDianNao, self).__init__(name, n_stream, freq=freq, num_pes=num_pes, noc_bw=noc_bw,
+        super(MaestroConvShiDianNao, self).__init__(name, n_stream, freq=freq, num_pes=num_pes, noc_bw=noc_bw,
                                              off_chip_bw=off_chip_bw, l1_size=l1_size, l2_size=l2_size)
 
     def get_mapping(self, H, W, P, Q, K, C, R, S, stride_h, stride_w):
@@ -89,7 +89,7 @@ class ConvShiDianNao(ConvAccelerator):
         return min(H * 64, self.num_pes)
 
     def __str__(self) -> str:
-        return f'ConvShiDianNao{self.topo_id}'
+        return f'MaestroConvShiDianNao{self.topo_id}'
 
     def __repr__(self) -> str:
-        return f'ConvShiDianNao{self.topo_id}'
+        return f'MaestroConvShiDianNao{self.topo_id}'

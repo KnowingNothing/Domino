@@ -13,8 +13,8 @@ import pickle as pkl
 from domino.utils import ONNXConvertor
 from domino.graph_pass import set_graph_precision, GraphPrinter, GraphVisitor
 from domino.graph_ir import Op, SubGraph, Graph, Tensor, Attribute
-from domino.base import AcceleratorBase, AccTask, AccStream, SoCBase
-from domino.accelerator import ConvAccelerator, MeshSoC, NVDLA, GemmTPU, DepthwiseShiDianNao
+from domino.base import MaestroAcceleratorBase, AccTask, AccStream, SoCBase
+from domino.accelerator import MaestroConvAccelerator, MeshSoC, MaestroNVDLA, MaestroGemmTPU, MaestroDepthwiseShiDianNao
 from domino.program_ir import ConstInt, ConstUInt, ConstFloat, ConstString, ExprList
 import matplotlib.pyplot as plt
 from domino import global_timer
@@ -244,7 +244,7 @@ class MapperBase:
     '''
     Commit a bunch of ops. 
     '''
-    def commit(self, soc: SoCBase, nodes: List[int], streams: Tuple[Tuple[AcceleratorBase, int]], simulate: bool = False):
+    def commit(self, soc: SoCBase, nodes: List[int], streams: Tuple[Tuple[MaestroAcceleratorBase, int]], simulate: bool = False):
         current_time = soc.elapsed_time
         assert len(nodes) == len(streams)
         for id, stream in zip(nodes, streams):

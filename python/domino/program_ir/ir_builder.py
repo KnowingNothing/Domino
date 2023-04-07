@@ -433,23 +433,32 @@ def remap_tiled_loops(body: Arch, loop_relations: Dict[Var, Var]):
     return substitute_ir(body, loop_relations)
 
 
-def arch_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=None):
+def arch_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=None, plan=None, final_tensor=None):
+    if plan is not None:
+        assert ctx is None, "Do not provide ctx for plan"
     ctx = IRBuilderContext() if ctx is None else ctx
+    ctx.set_target_tileflow()
     assert isinstance(ctx, IRBuilderContext)
 
     tensor_input_vars = [t.var for t in tensor_inputs]
 
-    input_arrays = []
-    for v, t in zip(tensor_input_vars, tensor_inputs):
-        ctx.bind_input(v, t)
-        # [reduce(lambda x, y: x * y, t.shape, 1)]
-        array = Array(ctx, v, t.shape)
-        input_arrays.append(array)
-        ctx.bind_array(v, array)
-
-    scalar_inputs = [] if scalar_inputs is None else scalar_inputs
-
-    func(ctx, *input_arrays, *scalar_inputs)
+    if plan is None:
+        input_arrays = []
+        for v, t in zip(tensor_input_vars, tensor_inputs):
+            ctx.bind_input(v, t)
+            # [reduce(lambda x, y: x * y, t.shape, 1)]
+            array = Array(ctx, v, t.shape)
+            input_arrays.append(array)
+            ctx.bind_array(v, array)
+        scalar_inputs = [] if scalar_inputs is None else scalar_inputs
+        func(ctx, *input_arrays, *scalar_inputs)
+    else:
+        for t in tensor_inputs:
+            t.ctx = ctx
+        scalar_inputs = [] if scalar_inputs is None else scalar_inputs
+        func(ctx, *tensor_inputs, *scalar_inputs)
+        assert final_tensor is not None
+        plan.apply(final_tensor, ctx)
     body = ctx.build()
     body = simplify(body)
 
@@ -469,7 +478,6 @@ def arch_build(func, tensor_inputs=None, scalar_inputs=None, ctx=None, target="t
         kernel = arch_lower(func, tensor_inputs,
                             scalar_inputs=scalar_inputs, ctx=ctx)
     else:
-        assert ctx is not None and isinstance(ctx, IRBuilderContext)
         kernel = func
 
     if target == "tileflow":

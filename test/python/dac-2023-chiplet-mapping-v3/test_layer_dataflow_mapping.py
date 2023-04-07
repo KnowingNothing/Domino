@@ -67,7 +67,7 @@ conv2d_mapping_templates = {
              "}\n"
              "}\n"
              "}\n"),
-    "NVDLA":
+    "MaestroNVDLA":
         lambda H, W, P, Q, K, C, R, S, stride_h, stride_w:
             ("Network sample_net {\n"
              "Layer Conv2d {\n"
@@ -658,7 +658,7 @@ def post_process(nx_graph):
     # max_area = 0
     max_memory_usage = {
         "TPU": 0,
-        "NVDLA": 0,
+        "MaestroNVDLA": 0,
         "ShiDianNao": 0
     }
     for node in nx_graph.nodes:

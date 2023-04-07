@@ -236,27 +236,31 @@ def find_path(tree: TreeContainer, position: TreeContainer):
     tree.post_order_walk(walker)
     return list(reversed(path))
 
+
 def tensor_in_tree(tree: TreeContainer, tensor: Tensor):
     assert isinstance(tree, TreeContainer)
     assert isinstance(tensor, Tensor)
-    
+
     found = False
+
     def walker(cur):
         nonlocal found
         if isinstance(cur.ctx, StmtBlockContext) and isinstance(cur.ctx.stmt, ir.NdStore):
             if cur.ctx.stmt.mem_ref.var.same_as(tensor.var):
                 found = True
-    
+
     tree.walk(walker)
     return found
+
 
 def find_position(tree: TreeContainer, level: int, tensor: Tensor):
     assert isinstance(tree, TreeContainer)
     assert isinstance(level, int)
     assert isinstance(tensor, Tensor)
-    assert(tensor_in_tree(tree, tensor))
-    
+    assert (tensor_in_tree(tree, tensor))
+
     position = None
+
     def helper(cur, dep):
         nonlocal position
         if dep == level:
@@ -266,7 +270,7 @@ def find_position(tree: TreeContainer, level: int, tensor: Tensor):
         else:
             for c in cur.children:
                 helper(c, dep + 1)
-    
+
     helper(tree, 0)
     assert position is not None
     return position
@@ -344,7 +348,7 @@ class FusionPlan:
         for k, v in self.mapping.items():
             ret += f"{k}: {v}\n"
         return ret
-    
+
     def apply(self, output_tensors, ctx):
         if isinstance(output_tensors, Tensor):
             output_tensors = [output_tensors]
@@ -357,7 +361,7 @@ class FusionPlan:
                 tensors.append(t)
         assert len(tensors) == len(ctx.stack[0].children)
 
-        tensor2loop = {k:v for k,v in zip(tensors, ctx.stack[0].children)}
+        tensor2loop = {k: v for k, v in zip(tensors, ctx.stack[0].children)}
         for t in self.tensor_order:
             fuse_point = self.mapping[t]
             if fuse_point.level == -1:
@@ -365,9 +369,11 @@ class FusionPlan:
                 continue
             main_tree = tensor2loop[fuse_point.tensor]
             branch_tree = tensor2loop[t]
-            position = find_position(main_tree, fuse_point.level, fuse_point.tensor)
+            position = find_position(
+                main_tree, fuse_point.level, fuse_point.tensor)
             merge_tree(ctx.stack[0], main_tree, branch_tree, position)
             tensor2loop[t] = main_tree
+
 
 class FusionState:
     def __init__(self, main_tensor: Tensor, tensor2loop: Dict[Tensor, TreeContainer], ctx):
@@ -478,7 +484,7 @@ def generate_fusion_plans(output_tensors, total_levels: int):
     visit = set()
     all_plans = []
     helper(output_tensors[0], empty_plan, visit, all_plans)
-    
+
     return all_plans
 
 

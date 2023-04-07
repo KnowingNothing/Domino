@@ -12,8 +12,8 @@ import pickle as pkl
 from domino.utils import ONNXConvertor
 from domino.graph_pass import set_graph_precision, GraphPrinter, GraphVisitor
 from domino.graph_ir import Op, SubGraph, Graph, Tensor, Attribute
-from domino.base import AcceleratorBase, AccTask, AccStream, SoCBase
-from domino.accelerator import ConvAccelerator, MeshSoC, NVDLA, GemmTPU, DepthwiseShiDianNao, ConvShiDianNao, GemmNVDLA
+from domino.base import MaestroAcceleratorBase, AccTask, AccStream, SoCBase
+from domino.accelerator import MaestroConvAccelerator, MeshSoC, MaestroNVDLA, MaestroGemmTPU, MaestroDepthwiseShiDianNao, MaestroConvShiDianNao, MaestroGemmNVDLA
 from domino.program_ir import ConstInt, ConstUInt, ConstFloat, ConstString, ExprList
 import matplotlib.pyplot as plt
 from domino import global_timer
@@ -35,30 +35,30 @@ graphs = {
 socs = {
     'SmallSoC': {
         'accelerator_matrix': [
-            [NVDLA('NVDLA(0,0)', 2), NVDLA('NVDLA(0,1)', 2)],
-            [DepthwiseShiDianNao("ShiDianNao(1,0)"), GemmTPU("GemmTPU(1,1)", 2)]
+            [MaestroNVDLA('MaestroNVDLA(0,0)', 2), MaestroNVDLA('MaestroNVDLA(0,1)', 2)],
+            [MaestroDepthwiseShiDianNao("ShiDianNao(1,0)"), MaestroGemmTPU("MaestroGemmTPU(1,1)", 2)]
         ],
         'name': 'SmallSoC'
 } , 'SmallSoC-GEMM': {
         'accelerator_matrix': [
-            [GemmNVDLA('NVDLA(0,0)', 2), GemmNVDLA('NVDLA(0,1)', 2)],
-            [DepthwiseShiDianNao("ShiDianNao(1,0)"), GemmTPU("GemmTPU(1,1)", 2)]
+            [MaestroGemmNVDLA('MaestroNVDLA(0,0)', 2), MaestroGemmNVDLA('MaestroNVDLA(0,1)', 2)],
+            [MaestroDepthwiseShiDianNao("ShiDianNao(1,0)"), MaestroGemmTPU("MaestroGemmTPU(1,1)", 2)]
         ],
         'name': 'SmallSoC'
 } , 'LargeSoC': {
         'accelerator_matrix': [
-            [DepthwiseShiDianNao("ShiDianNao(0,0)"), DepthwiseShiDianNao("ShiDianNao(0,1)")],
-            [NVDLA('NVDLA(1,0)', 2), NVDLA('NVDLA(1,1)', 2)],
-            [NVDLA('NVDLA(2,0)', 2), NVDLA('NVDLA(2,1)', 2)],
-            [GemmTPU('GemmTPU(3,0)', 2), GemmTPU('GemmTPU(3,1)', 2)],
+            [MaestroDepthwiseShiDianNao("ShiDianNao(0,0)"), MaestroDepthwiseShiDianNao("ShiDianNao(0,1)")],
+            [MaestroNVDLA('MaestroNVDLA(1,0)', 2), MaestroNVDLA('MaestroNVDLA(1,1)', 2)],
+            [MaestroNVDLA('MaestroNVDLA(2,0)', 2), MaestroNVDLA('MaestroNVDLA(2,1)', 2)],
+            [MaestroGemmTPU('MaestroGemmTPU(3,0)', 2), MaestroGemmTPU('MaestroGemmTPU(3,1)', 2)],
         ],
         'name': 'LargeSoC'
 } , 'LargeSoC-GEMM': {
         'accelerator_matrix': [
-            [DepthwiseShiDianNao("ShiDianNao(0,0)"), DepthwiseShiDianNao("ShiDianNao(0,1)")],
-            [GemmNVDLA('NVDLA(1,0)', 2), GemmNVDLA('NVDLA(1,1)', 2)],
-            [GemmNVDLA('NVDLA(2,0)', 2), GemmNVDLA('NVDLA(2,1)', 2)],
-            [GemmTPU('GemmTPU(3,0)', 2), GemmTPU('GemmTPU(3,1)', 2)],
+            [MaestroDepthwiseShiDianNao("ShiDianNao(0,0)"), MaestroDepthwiseShiDianNao("ShiDianNao(0,1)")],
+            [MaestroGemmNVDLA('MaestroNVDLA(1,0)', 2), MaestroGemmNVDLA('MaestroNVDLA(1,1)', 2)],
+            [MaestroGemmNVDLA('MaestroNVDLA(2,0)', 2), MaestroGemmNVDLA('MaestroNVDLA(2,1)', 2)],
+            [MaestroGemmTPU('MaestroGemmTPU(3,0)', 2), MaestroGemmTPU('MaestroGemmTPU(3,1)', 2)],
         ],
         'name': 'LargeSoC'
 }
@@ -172,9 +172,9 @@ if __name__ == "__main__":
     os.system("mkdir -p .cache")
     os.system("mkdir -p pics")
     os.system("mkdir -p result")
-    AcceleratorBase.load_cache()
+    MaestroAcceleratorBase.load_cache()
     main(args.alg, args.model, args.soc, args.bandwidth, args.store_path, args.cached)
     # run('COMB', 'vision', 'LargeSoC', True)
     # main()
-    AcceleratorBase.store_cache()
+    MaestroAcceleratorBase.store_cache()
               

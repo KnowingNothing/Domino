@@ -24,6 +24,15 @@ std::vector<Var> GetInputTensorVars(IRBase ir);
 
 std::vector<Expr> GetInputTensorIndices(IRBase ir, Var tensor_var);
 
+/**
+ * @brief Generate the workload specification for single operator
+ *        in the format of TileFlow.
+ * 
+ * @param ir Expect NdStore
+ * @return std::string 
+ */
+std::string GenerateTileFlowOp(IRBase ir);
+
 }  // namespace pass
 
 }  // namespace domino
