@@ -25,6 +25,23 @@ def run_tileflow(workload, arch, mapping, tileflow_path="tileflow", save_tmp_fil
     process.wait()
     with open(result_file, "w") as fout:
         fout.write(stdout.decode())
+    parse_results = {
+        "Cycle": int,
+        "Energy": float
+    }
+    results = {}
+    in_results = False
+    with open(result_file, "r") as fin:
+        for line in fin:
+            if line.startswith("***TileFlow Result"):
+                in_results = True
+            if line.startswith("***TileFlow Result Ends"):
+                in_results = False
+            if in_results:
+                parts = line.split(",")
+                print(parts)
+                if parts[0] in parse_results:
+                    results[parts[0]] = parse_results[parts[0]](parts[1])
 
     if not save_tmp_file:
         os.remove(workload_file)
@@ -32,3 +49,5 @@ def run_tileflow(workload, arch, mapping, tileflow_path="tileflow", save_tmp_fil
         os.remove(mapping_file)
         # if os.path.exists(result_file) and os.path.isfile(result_file):
         #     os.remove(result_file)
+    
+    return results

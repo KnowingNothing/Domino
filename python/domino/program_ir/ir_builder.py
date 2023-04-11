@@ -12,27 +12,52 @@ from typing import Optional, Union, List, Any, Dict
 from functools import reduce
 from .simplify import substitute_block, simplify, substitute_ir
 from ..passes import flatten_array_access
+from ..dse import MultiDimSpace, CategoricalSpace, CallablePolicy, spaces
+from ..analysis import generate_fusion_plans
 
 __all__ = [
     "program_lower",
-    "arch_lower",
     "program_build",
-    "arch_build",
     "IRBuilderContext"
 ]
 
+
 class IRBuilderContext(object):
+    wkl_ctx_map = {}
+
     def __init__(self):
+        # states
         self.tree = TreeContainer(None)
         self.stack = [self.tree]
         self.array_map = {}
         self.input_tensor_map = {}
-        self.loop_relatioins = {}
+        self.loop_relations = {}
         self.spatial_loop_set = {}
+        # other control flags
         self.lower_to_tiles = False
+        # tuning
+        self.is_tuning_mode = False
+        self.space = MultiDimSpace()
+        self.config = None
 
     def set_target_tileflow(self):
         self.lower_to_tiles = True
+
+    def enable_tuning(self, logfile="tmp_tuning_log.log"):
+        self.is_tuning_mode = True
+        if self.space.get_history_file() != logfile:
+            self.space.set_history_file(logfile)
+
+    def disable_tuning(self):
+        self.is_tuning_mode = False
+
+    def clear_state(self):
+        self.tree = TreeContainer(None)
+        self.stack = [self.tree]
+        self.array_map = {}
+        self.input_tensor_map = {}
+        self.loop_relations = {}
+        self.spatial_loop_set = {}
 
     def bind_array(self, var: Var, array: Array):
         assert isinstance(var, Var)
@@ -114,8 +139,29 @@ class IRBuilderContext(object):
             Loop(f, name=loop.name, iter_kind=loop.iter_kind)
             for f in factors
         ]
-        self.loop_relatioins[loop] = SplitRelation(new_loops)
+        self.loop_relations[loop] = SplitRelation(new_loops)
         return new_loops
+
+    def define_split(self, loop: Loop, nparts: int, constraints=None):
+        try:
+            extent = loop.extent.value
+            subspace = spaces.DimSplitSpace(
+                extent, nparts, constraints=constraints)
+            self.space.add_subspace(loop.name, subspace)
+        except Exception as e:
+            raise ValueError(f"Only support static shape\n{e}")
+
+    def get_split(self, loop: Loop, policy: CallablePolicy):
+        assert self.space.has_subspace(loop.name)
+        subspace = self.space.get_subspace(loop.name)
+        return subspace.get_next(policy)
+
+    def define_fuse(self, final_tensor: Tensor, level: int):
+        plans = generate_fusion_plans(final_tensor, level)
+        self.space["fuse"] = CategoricalSpace(plans)
+
+    def get_fuse(self, policy: CallablePolicy):
+        return self.space.get_subspace("fuse").get_next(policy)
 
     # def spatial(self, loop: Loop, dim="x"):
     #     self.spatial_loop_set[loop] = dim
@@ -265,7 +311,8 @@ class IRBuilderContext(object):
                     if cur_type == last_type:
                         iterators = [cur.ctx.loops[tail].iterator] + iterators
                     else:
-                        raise RuntimeError("Please don't specify loop annotation outside tile.")
+                        raise RuntimeError(
+                            "Please don't specify loop annotation outside tile.")
                         # if isinstance(body, Arch):
                         #     # already formed as tile, must be memory level
                         #     body = MemoryLevel(level, _to_block(
@@ -399,7 +446,7 @@ class IRBuilderContext(object):
 
         # substitute the loops
         smap = {}
-        for l, rel in self.loop_relatioins.items():
+        for l, rel in self.loop_relations.items():
             if isinstance(rel, SplitRelation):
                 loops = rel.sub_loops
                 assert len(loops) > 0
@@ -423,69 +470,6 @@ def flatten_arrays(body: Block, arrays: List[Array]):
         var_list.append(array.var)
         strides.append(ExprList([_to_expr(x) for x in array.shape]))
     return flatten_array_access(body, var_list, strides)
-
-
-def remap_tiled_loops(body: Arch, loop_relations: Dict[Var, Var]):
-    """
-    This is used to simplify the code generation for TileFlow
-    Because TileFlow requires all the tiled loops use the same name
-    """
-    return substitute_ir(body, loop_relations)
-
-
-def arch_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=None, plan=None, final_tensor=None):
-    if plan is not None:
-        assert ctx is None, "Do not provide ctx for plan"
-    ctx = IRBuilderContext() if ctx is None else ctx
-    ctx.set_target_tileflow()
-    assert isinstance(ctx, IRBuilderContext)
-
-    tensor_input_vars = [t.var for t in tensor_inputs]
-
-    if plan is None:
-        input_arrays = []
-        for v, t in zip(tensor_input_vars, tensor_inputs):
-            ctx.bind_input(v, t)
-            # [reduce(lambda x, y: x * y, t.shape, 1)]
-            array = Array(ctx, v, t.shape)
-            input_arrays.append(array)
-            ctx.bind_array(v, array)
-        scalar_inputs = [] if scalar_inputs is None else scalar_inputs
-        func(ctx, *input_arrays, *scalar_inputs)
-    else:
-        for t in tensor_inputs:
-            t.ctx = ctx
-        scalar_inputs = [] if scalar_inputs is None else scalar_inputs
-        func(ctx, *tensor_inputs, *scalar_inputs)
-        assert final_tensor is not None
-        plan.apply(final_tensor, ctx)
-    body = ctx.build()
-    body = simplify(body)
-
-    reverse_relation = {}
-    for k, v in ctx.loop_relatioins.items():
-        for vv in v.sub_loops:
-            reverse_relation[vv.var] = k.var
-    body = remap_tiled_loops(body, reverse_relation)
-    return body
-
-
-def arch_build(func, tensor_inputs=None, scalar_inputs=None, ctx=None, target="tileflow"):
-    if not isinstance(func, cir.Arch):
-        assert tensor_inputs is not None
-        ctx = IRBuilderContext() if ctx is None else ctx
-        assert isinstance(ctx, IRBuilderContext)
-        kernel = arch_lower(func, tensor_inputs,
-                            scalar_inputs=scalar_inputs, ctx=ctx)
-    else:
-        kernel = func
-
-    if target == "tileflow":
-        code = codegen_tileflow(kernel)
-    else:
-        raise NotImplementedError()
-
-    return code
 
 
 def program_lower(func, tensor_inputs: List[Tensor], scalar_inputs=None, ctx=None):

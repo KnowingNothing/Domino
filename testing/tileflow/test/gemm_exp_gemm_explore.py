@@ -2,6 +2,7 @@ import domino.program_ir as dir
 import domino.analysis as ana
 import domino.accelerator as acc
 import domino.runtime as rt
+from tileflow import Context, arch_lower, arch_build
 
 
 def get_hardware():
@@ -44,7 +45,7 @@ def gemm_exp_gemm_compute(ctx, tA, tB, tC, tD, tE, tF, M, N, K, L):
     m, n = [dir.Loop(x, name=y) for (x, y) in zip([M, N], "MN")]
     k, l = [dir.Loop(x, name=y) for (x, y) in zip([K, L], "KL")]
     m1, m2, m3 = ctx.split(m, nparts=3, factors=[M//2, 2, 1])
-    n1, n2, n3 = ctx.split(n, nparts=3, factors=[N//2, 2, 1])
+    n1, n2, n3 = ctx.split(n, nparts=3, factors=[1, 1, N])
     k1, k2, k3 = ctx.split(k, nparts=3, factors=[K//2, 2, 1])
     l1, l2, l3 = ctx.split(l, nparts=3, factors=[L//2, 2, 1])
 
@@ -65,7 +66,7 @@ if __name__ == "__main__":
     hw = get_hardware()
     hw_config = acc.tileflow_accelerator_generator(hw)
 
-    ctx = dir.IRBuilderContext()
+    ctx = Context()
     ctx.set_target_tileflow()
     M = 512
     N = 64
@@ -93,10 +94,13 @@ if __name__ == "__main__":
         with dir.NameScope():
             gemm_exp_gemm_compute(ctx, tA, tB, tC, tD, tE, tF, *[M, N, K, L])
 
-    i = 0
+    i = 1
+    print(len(plans))
     for plan in plans[i:i+1]:
-        kernel = dir.arch_lower(
+        kernel = arch_lower(
             static_func, [tA, tB, tC, tD, tE, tF], plan=plan, final_tensor=tF)
-        kernel = dir.arch_build(kernel, target="tileflow")
+        kernel = arch_build(kernel, target="tileflow")
+        print(kernel)
         # print(kernel)
-        rt.run_tileflow(workload, hw_config, kernel, tileflow_path="/home/zchno/TileFlow/build/bin/tileflow")
+        results = rt.run_tileflow(workload, hw_config, kernel, tileflow_path="/home/zchno/TileFlow/build/bin/tileflow")
+        print(results)

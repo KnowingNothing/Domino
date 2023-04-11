@@ -1,8 +1,12 @@
 from dominoc import ir, analysis
-from ..program_ir import (
-    ComputeLevel, MemoryLevel, Evaluate, Tensor, Var, Loop, Iterator, Range,
-    TreeContainer, SyntaxContext, TileBlockContext, StmtBlockContext, NdStore,
-    make_prod_consum_graph, print_ir, simplify_expr, substitute_expr)
+from ..program_ir.arch import (
+    ComputeLevel, MemoryLevel)
+from ..program_ir.stmt import (Evaluate, Var, Iterator, Range,
+                               NdStore)
+from ..program_ir.simplify import (simplify_expr, substitute_expr)
+from ..program_ir.dsl import (Tensor, Loop, TreeContainer, SyntaxContext,
+                              TileBlockContext, StmtBlockContext, make_prod_consum_graph)
+from ..program_ir.functional import print_ir
 from ..passes import ProdConsumGraph
 from typing import List, Dict
 import queue
@@ -19,8 +23,6 @@ __all__ = [
     # TreeContainer API
     "merge_tree",
     "generate_fusion_plans",
-    # Tiling Space API
-    "generate_tile_tensor_computation_space"
 ]
 
 ## ==---------------------------------------------==##
@@ -486,67 +488,3 @@ def generate_fusion_plans(output_tensors, total_levels: int):
     helper(output_tensors[0], empty_plan, visit, all_plans)
 
     return all_plans
-
-
-## ==---------------------------------------------==##
-##                Tiling Space API                 ##
-## ==---------------------------------------------==##
-
-@lru_cache
-def get_all_factors(value: int):
-    end = int(math.sqrt(value))
-    ret = []
-    for i in range(1, end+1):
-        if value % i == 0:
-            ret.append(i)
-            ret.append(value // i)
-    return list(sorted(ret))
-
-
-@lru_cache
-def split_to_factors(value: int, parts: int):
-    factors = get_all_factors(value)
-    ret = []
-
-    def helper(cur_id, cur, left):
-        nonlocal ret
-        if cur_id == parts - 1:
-            ret.append(cur + [left])
-            return
-        else:
-            for f in factors:
-                if left % f == 0:
-                    helper(cur_id + 1, cur + [f], left//f)
-    helper(0, [], value)
-    return ret
-
-
-def generate_tile_tensor_computation_space(tensor: Tensor, shape: List[int], levels: int):
-    if tensor.init is None:
-        raise ValueError("Can't tile computation for input tensors.")
-    elif len(tensor.updates) == 0:
-        compute = tensor.init
-    elif len(tensor.updates) == 1:
-        compute = tensor.updates[0]
-    else:
-        raise NotImplementedError(
-            "Computations with more than 1 update are not supported yet.")
-
-    assert len(tensor.shape) == len(shape)
-    ndim = len(shape)
-    shape_dict = {}
-    all_loops = compute.all_loops()
-    for l, v in zip(all_loops[:ndim], shape):
-        shape_dict[l] = v
-    if compute.has_reduce():
-        for l in compute.reduce_loops():
-            extent = simplify_expr(l.dom.extent)
-            assert hasattr(
-                extent, "value"), f"Can't handle non-static bounds: {print_ir(extent, print_out=False)}"
-            shape_dict[l] = extent.value
-
-    tile_choices = {}
-    for k, v in shape_dict.items():
-        tile_choices[k] = split_to_factors(v, levels)
-
-    return tile_choices
