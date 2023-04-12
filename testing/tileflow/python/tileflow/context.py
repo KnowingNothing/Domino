@@ -3,12 +3,31 @@ import domino.program_ir as dir
 import domino.codegen as dgen
 from typing import List, Dict
 
-__all__ = ["Context", "arch_lower", "arch_build"]
+__all__ = ["register_workload", "Context", "arch_lower", "arch_build"]
+
+
+WORKLOAD_MAP = {}
+
+def register_workload(func):
+    name = func.__name__
+    assert name not in WORKLOAD_MAP
+    WORKLOAD_MAP[name] = func
+    return func
 
 
 class Context(dir.IRBuilderContext):
     def __init__(self):
         super().__init__()
+        self.lower_to_tiles = True
+    
+    def set_space(self, space):
+        self.space = space
+        
+    def set_target_tileflow(self):
+        self.lower_to_tiles = True
+        
+    def split(self, loop, nparts=None, factors=None):
+        return super().split(loop, nparts=nparts, factors=factors, rename=False)
 
 
 def remap_tiled_loops(body: dir.Arch, loop_relations: Dict[dir.Var, dir.Var]):
@@ -19,32 +38,7 @@ def remap_tiled_loops(body: dir.Arch, loop_relations: Dict[dir.Var, dir.Var]):
     return dir.substitute_ir(body, loop_relations)
 
 
-def arch_lower(func, tensor_inputs: List[dir.Tensor], scalar_inputs=None, ctx=None, plan=None, final_tensor=None):
-    if plan is not None:
-        assert ctx is None, "Do not provide ctx for plan"
-    ctx = Context() if ctx is None else ctx
-    ctx.set_target_tileflow()
-    assert isinstance(ctx, Context)
-
-    tensor_input_vars = [t.var for t in tensor_inputs]
-
-    if plan is None:
-        input_arrays = []
-        for v, t in zip(tensor_input_vars, tensor_inputs):
-            ctx.bind_input(v, t)
-            # [reduce(lambda x, y: x * y, t.shape, 1)]
-            array = dir.Array(ctx, v, t.shape)
-            input_arrays.append(array)
-            ctx.bind_array(v, array)
-        scalar_inputs = [] if scalar_inputs is None else scalar_inputs
-        func(ctx, *input_arrays, *scalar_inputs)
-    else:
-        for t in tensor_inputs:
-            t.ctx = ctx
-        scalar_inputs = [] if scalar_inputs is None else scalar_inputs
-        func(ctx, *tensor_inputs, *scalar_inputs)
-        assert final_tensor is not None
-        plan.apply(final_tensor, ctx)
+def arch_lower(ctx):
     body = ctx.build()
     body = dir.simplify(body)
 

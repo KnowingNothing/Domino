@@ -23,8 +23,6 @@ __all__ = [
 
 
 class IRBuilderContext(object):
-    wkl_ctx_map = {}
-
     def __init__(self):
         # states
         self.tree = TreeContainer(None)
@@ -39,9 +37,6 @@ class IRBuilderContext(object):
         self.is_tuning_mode = False
         self.space = MultiDimSpace()
         self.config = None
-
-    def set_target_tileflow(self):
-        self.lower_to_tiles = True
 
     def enable_tuning(self, logfile="tmp_tuning_log.log"):
         self.is_tuning_mode = True
@@ -70,7 +65,7 @@ class IRBuilderContext(object):
         self.input_tensor_map[var] = tensor
 
     def Array(self, shape, name="T", dtype="float32"):
-        name = NameGenerator.gen_name(name)
+        name = NameScope.current.gen_name(name)
         var = Var(dtype, name)
         array = Array(
             self, var, shape
@@ -130,19 +125,22 @@ class IRBuilderContext(object):
     # def init(self, tensor_view: TensorView, value: Expr):
     #     init_ctx = InitBlockContext(self, tensor_view, value)
 
-    def split(self, loop: Loop, nparts=1, factors=None):
+    def split(self, loop: Loop, nparts=None, factors=None, rename=True):
         if factors is None:
             raise NotImplementedError(
                 "Support for auto-tiling will be added later.")
-        assert len(factors) == nparts
+        if nparts is not None:
+            assert len(factors) == nparts
         new_loops = [
-            Loop(f, name=loop.name, iter_kind=loop.iter_kind)
+            Loop(f, name=loop.name, iter_kind=loop.iter_kind, rename=rename)
             for f in factors
         ]
         self.loop_relations[loop] = SplitRelation(new_loops)
         return new_loops
 
     def define_split(self, loop: Loop, nparts: int, constraints=None):
+        if self.space.has_subspace(loop.name):
+            return
         try:
             extent = loop.extent.value
             subspace = spaces.DimSplitSpace(
@@ -154,13 +152,18 @@ class IRBuilderContext(object):
     def get_split(self, loop: Loop, policy: CallablePolicy):
         assert self.space.has_subspace(loop.name)
         subspace = self.space.get_subspace(loop.name)
+        policy.set_inference_mode(not self.is_tuning_mode)
         return subspace.get_next(policy)
 
-    def define_fuse(self, final_tensor: Tensor, level: int):
-        plans = generate_fusion_plans(final_tensor, level)
-        self.space["fuse"] = CategoricalSpace(plans)
+    def define_fuse(self, final_tensor: Tensor, levels: int):
+        if self.space.has_subspace("fuse"):
+            return
+        plans = generate_fusion_plans(final_tensor, 2 * levels-2)
+        print(f"Totally {len(plans)} fusion plans")
+        self.space.add_subspace("fuse", CategoricalSpace(plans))
 
     def get_fuse(self, policy: CallablePolicy):
+        policy.set_inference_mode(not self.is_tuning_mode)
         return self.space.get_subspace("fuse").get_next(policy)
 
     # def spatial(self, loop: Loop, dim="x"):

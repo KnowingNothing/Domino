@@ -94,11 +94,11 @@ if __name__ == "__main__":
         with dir.NameScope():
             gemm_exp_gemm_compute(ctx, tA, tB, tC, tD, tE, tF, *[M, N, K, L])
 
-    i = 1
+    i = 0
     print(len(plans))
     for plan in plans[i:i+1]:
-        kernel = arch_lower(
-            static_func, [tA, tB, tC, tD, tE, tF], plan=plan, final_tensor=tF)
+        plan.apply(tF, ctx)
+        kernel = arch_lower(ctx)
         kernel = arch_build(kernel, target="tileflow")
         print(kernel)
         # print(kernel)

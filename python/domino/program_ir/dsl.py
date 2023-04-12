@@ -48,39 +48,60 @@ __all__ = [
 
 
 class NameGenerator(object):
-    name_cache = {}
+    def __init__(self, only_capital=False):
+        self.name_cache = {}
+        self.only_capital = only_capital
+        self.capital_used = set()
+        self.choices = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-    @classmethod
-    def gen_name(cls, hint: str):
-        parts = hint.split("_")
-        if parts[0] not in cls.name_cache:
-            cls.name_cache[parts[0]] = 0
-            return parts[0]
+    def gen_name(self, hint: str):
+        if self.only_capital:
+            if hint not in self.name_cache:
+                if hint in self.choices:
+                    self.capital_used.add(hint)
+                    self.name_cache[hint] = hint
+                    return hint
+            for c in self.choices:
+                if c not in self.capital_used:
+                    self.capital_used.add(c)
+                    self.name_cache[hint] = c
+                    return c
+            raise RuntimeError("No enough characters to use.")
         else:
-            v = cls.name_cache[parts[0]]
-            cls.name_cache[parts[0]] += 1
-            return parts[0] + f"_{v}"
+            parts = hint.split("_")
+            if parts[0] not in self.name_cache:
+                self.name_cache[parts[0]] = 0
+                return parts[0]
+            else:
+                v = self.name_cache[parts[0]]
+                self.name_cache[parts[0]] += 1
+                name = parts[0] + f"_{v}"
+                return name
+
+class DefaultNameScope:
+    def __init__(self):
+        self.gen = NameGenerator()
         
+    def gen_name(self, hint: str):
+        return self.gen.gen_name(hint)
         
 class NameScope:
-    current = None
-    def __init__(self) -> None:
-        self.pre = None
-        self.names = None
+    current = DefaultNameScope()
+    def __init__(self, only_capital=False):
+        self.pre = NameScope.current
+        self.gen = NameGenerator(only_capital)
+        NameScope.current = self
+        
+    def gen_name(self, hint: str):
+        return self.gen.gen_name(hint)
         
     def __enter__(self):
-        if NameScope.current is not None:
-            NameScope.current.names = NameGenerator.name_cache
-        next_scope = NameScope()
-        next_scope.pre = NameScope.current
-        NameScope.current = next_scope
-        NameGenerator.name_cache = {}
+        return
 
     def __exit__(self, exc_type, exc_value, exc_tb):
         if exc_type is None:
             cur_scope = NameScope.current
             NameScope.current = cur_scope.pre
-            NameGenerator.name_cache = cur_scope.names
             return True
         else:
             raise RuntimeError(exc_value)
@@ -114,7 +135,7 @@ class Tensor(object):
             dtype: Union[DType, str] = "float32",
             ctx = None):
         self.shape = shape
-        self.name = NameGenerator.gen_name(name)
+        self.name = NameScope.current.gen_name(name)
         self.dtype = dtype
         self.var = Var(self.dtype, self.name)
         self.init: Optional[Compute] = None
@@ -509,7 +530,7 @@ class Compute(object):
 class Loop(object):
     loop_cache = {}
 
-    def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name="l", iter_kind=IterTypeKind.Hybrid):
+    def __init__(self, r: Union[int, Union[List[Union[int, ConstInt]], range]], name="l", iter_kind=IterTypeKind.Hybrid, rename=True):
         if isinstance(r, (int, ir.Expr)):
             self.dom = Range(0, r, 1)
         elif isinstance(r, (list, tuple)):
@@ -526,8 +547,10 @@ class Loop(object):
         else:
             raise ValueError(
                 f"Can't use {r} of type {type(r)} to initialize Loop")
-
-        self.name = NameGenerator.gen_name(name)
+        if rename:
+            self.name = NameScope.current.gen_name(name)
+        else:
+            self.name = name
         self.iter_kind = iter_kind
         self.var = Var("int32", self.name)
         self.loop_cache[self.var] = self

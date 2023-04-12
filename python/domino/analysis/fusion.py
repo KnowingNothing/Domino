@@ -240,6 +240,13 @@ def find_path(tree: TreeContainer, position: TreeContainer):
 
 
 def tensor_in_tree(tree: TreeContainer, tensor: Tensor):
+    """Find the tensor of the same name in the tree.
+        Note that we only use name for comparison
+
+    Args:
+        tree (TreeContainer): the tree
+        tensor (Tensor): the tensor
+    """
     assert isinstance(tree, TreeContainer)
     assert isinstance(tensor, Tensor)
 
@@ -248,7 +255,10 @@ def tensor_in_tree(tree: TreeContainer, tensor: Tensor):
     def walker(cur):
         nonlocal found
         if isinstance(cur.ctx, StmtBlockContext) and isinstance(cur.ctx.stmt, ir.NdStore):
-            if cur.ctx.stmt.mem_ref.var.same_as(tensor.var):
+            # TODO: use var for comparison
+            # if cur.ctx.stmt.mem_ref.var.same_as(tensor.var):
+            #     found = True
+            if cur.ctx.stmt.mem_ref.var.id.value == tensor.var.id.value:
                 found = True
 
     tree.walk(walker)
@@ -363,18 +373,18 @@ class FusionPlan:
                 tensors.append(t)
         assert len(tensors) == len(ctx.stack[0].children)
 
-        tensor2loop = {k: v for k, v in zip(tensors, ctx.stack[0].children)}
+        tensor2loop = {k.var.id.value: v for k, v in zip(tensors, ctx.stack[0].children)}
         for t in self.tensor_order:
             fuse_point = self.mapping[t]
             if fuse_point.level == -1:
                 # nothing to do
                 continue
-            main_tree = tensor2loop[fuse_point.tensor]
-            branch_tree = tensor2loop[t]
+            main_tree = tensor2loop[fuse_point.tensor.var.id.value]
+            branch_tree = tensor2loop[t.var.id.value]
             position = find_position(
                 main_tree, fuse_point.level, fuse_point.tensor)
             merge_tree(ctx.stack[0], main_tree, branch_tree, position)
-            tensor2loop[t] = main_tree
+            tensor2loop[t.var.id.value] = main_tree
 
 
 class FusionState:
@@ -469,6 +479,8 @@ def generate_fusion_plans(output_tensors, total_levels: int):
                 # not the last tensor
                 # each corresponds to one fusion possibility
                 for l in range(level_topper, min(level_deeper + 1, total_levels)):
+                    if l % 2:
+                        continue
                     next_plan = cur_plan.clone()
                     next_plan[t] = FusionPoint(start_tensor, l)
                     if t in graph.read_links:

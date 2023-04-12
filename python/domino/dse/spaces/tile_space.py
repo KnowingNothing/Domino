@@ -5,6 +5,7 @@ from ..space import MultiDimSpace, UniformCategoricalSpace
 
 __all__ = ["DimSplitSpace", "MultiDimTileSpace"]
 
+
 @lru_cache
 def get_all_factors(value: int):
     end = int(math.sqrt(value))
@@ -43,7 +44,17 @@ class DimSplitSpace(UniformCategoricalSpace):
         assert isinstance(constraints, (list, tuple))
         for c in constraints:
             assert callable(c), "Expect callable function as constraint"
-        super().__init__(split_to_factors(length, nparts))
+        choices = split_to_factors(length, nparts)
+        filtered_choices = []
+        for c in choices:
+            valid = True
+            for f in constraints:
+                if not f(c):
+                    valid = False
+                    break
+            if valid:
+                filtered_choices.append(c)
+        super().__init__(filtered_choices)
 
 
 class MultiDimTileSpace(MultiDimSpace):

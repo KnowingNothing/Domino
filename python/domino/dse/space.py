@@ -2,6 +2,7 @@ from collections import OrderedDict
 import numpy as np
 import json
 from ..base import DesignSpaceBase
+from .key import MultiDimKey
 
 __all__ = ["MultiDimSpace", "CategoricalSpace", "UniformCategoricalSpace"]
 
@@ -14,13 +15,13 @@ class DesignSpace(DesignSpaceBase):
 
     def set_history_file(self, filename):
         self._history_file = filename
-    
+
     def get_history_file(self):
         return self._history_file
 
     def record_history(self, config, value):
         self._history.append({"config": config, "value": value})
-        
+
     def save_to_file(self, filename=None):
         assert filename or self._history_file
         filename = filename if filename is not None else self._history_file
@@ -29,7 +30,7 @@ class DesignSpace(DesignSpaceBase):
             for line in self._history:
                 string = json.dumps(line)
                 fout.write(string + "\n")
-                
+
     def load_from_file(self, filename=None):
         self._history.clear()
         assert filename or self._history_file
@@ -39,7 +40,7 @@ class DesignSpace(DesignSpaceBase):
             for line in fin:
                 obj = json.loads(line)
                 self._history.append(obj)
-    
+
     def append_from_file(self, filename=None):
         assert filename or self._history_file
         filename = filename if filename is not None else self._history_file
@@ -48,36 +49,9 @@ class DesignSpace(DesignSpaceBase):
             for line in fin:
                 obj = json.loads(line)
                 self._history.append(obj)
-                
+
     def get_next(self, policy):
         raise NotImplementedError()
-
-
-class MultiDimKey:
-    def __init__(self, first, second=None):
-        assert second is None or isinstance(second, (list, tuple))
-        self.first = first
-        self.second = second
-        if self.second is not None:
-            for it in self.second:
-                assert isinstance(it, MultiDimKey)
-
-    @staticmethod
-    def make_multi_dim_key(k):
-        if isinstance(k, MultiDimKey):
-            return k
-        elif isinstance(k, int):
-            return MultiDimKey(k)
-        elif isinstance(k, (list, tuple)):
-            return [MultiDimKey.make_multi_dim_key(kk) for kk in k]
-        elif isinstance(k, dict):
-            ret = []
-            for kk, vv in k.items():
-                vvk = MultiDimKey.make_multi_dim_key(vv)
-                ret.append(MultiDimKey(kk, vvk))
-            return ret
-        else:
-            raise ValueError(f"Can't convert {k} to MultiDimKey.")
 
 
 class MultiDimSpace(DesignSpace):
@@ -96,7 +70,7 @@ class MultiDimSpace(DesignSpace):
 
     def del_subspace(self, key):
         del self._sub_spaces[key]
-        
+
     def has_subspace(self, key):
         return key in self._sub_spaces
 
@@ -135,7 +109,7 @@ class CategoricalSpace(DesignSpace):
         super().__init__()
         assert isinstance(choices, (list, tuple))
         self._choices = list(choices)
-        
+
     def get_next(self, policy):
         assert callable(policy)
         return policy(self._choices, self._history)
@@ -145,8 +119,7 @@ class CategoricalSpace(DesignSpace):
 
     def __getitem__(self, key):
         assert isinstance(key, MultiDimKey)
-        assert isinstance(
-            key.first, int) and key.second is None and key.first < len(self)
+        assert key.is_int_key() and key.first < len(self)
         return self._choices[key.first]
 
     def append(self, value):
