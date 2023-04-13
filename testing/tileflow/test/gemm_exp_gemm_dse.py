@@ -1,12 +1,9 @@
 import domino.program_ir as dir
-import domino.analysis as ana
 import domino.accelerator as acc
-import domino.runtime as rt
-from tileflow import Context, arch_lower, arch_build, register_workload
-import domino.dse as dse
-from pebble import ProcessPool, ProcessExpired
+from tileflow import (
+    register_workload,
+    ops, get_space, generate_candidate, concurrent_work)
 from tqdm import tqdm
-import os
 
 
 def get_hardware(levels):
@@ -46,45 +43,6 @@ def get_hardware(levels):
         raise NotImplementedError()
 
 
-def GeneralOperator(ctx, tensors, loops, levels, fbody):
-    for loop in loops:
-        assert len(loop) == 2 * levels, f"{len(loop)} vs {2 * levels}"
-    org_loops = [x[0] for x in loops]
-
-    def level_operator(lx):
-        idx = int((levels - lx) * 2 + 1)
-        if lx <= 1:
-            with ctx.tile(f"L{lx-1}", [x[idx] for x in loops], "Temporal"):
-                fbody(*tensors, *org_loops)
-        else:
-            with ctx.tile(f"L{lx-1}", [x[idx] for x in loops], "Temporal"):
-                with ctx.tile(f"L{lx-1}", [x[idx+1] for x in loops], "Spatial"):
-                    level_operator(lx-1)
-
-    level_operator(levels)
-
-
-def Gemm(ctx, tA, tB, loop_m, loop_l, loop_k, levels):
-    tC = dir.Tensor([M, L], name="C", dtype="int16", ctx=ctx)
-
-    def gemm_func(A, B, C, m, l, k):
-        C[m, l] = C[m, l] + A[m, k] * B[k, l]
-
-    GeneralOperator(ctx, [tA, tB, tC], [
-                    loop_m, loop_l, loop_k], levels, gemm_func)
-    return tC
-
-
-def exp(ctx, tA, loop_m, loop_l, levels):
-    tB = dir.Tensor([M, L], name="B", dtype="int16", ctx=ctx)
-
-    def exp_func(A, B, m, l):
-        B[m, l] = dir.exp(A[m, l])
-
-    GeneralOperator(ctx, [tA, tB], [loop_m, loop_l], levels, exp_func)
-    return tB
-
-
 def gemm_exp_gemm_compute(ctx, tA, tB, tE, M, N, K, L, levels):
     m, n = [dir.Loop(x, name=y) for (x, y) in zip([M, N], "MN")]
     k, l = [dir.Loop(x, name=y) for (x, y) in zip([K, L], "KL")]
@@ -107,86 +65,16 @@ def gemm_exp_gemm_compute(ctx, tA, tB, tE, M, N, K, L, levels):
     loop_k = [k, *sub_k]
     loop_l = [l, *sub_l]
 
-    tC = Gemm(ctx, tA, tB, loop_m, loop_l, loop_k, levels=levels)
-    tD = exp(ctx, tC, loop_m, loop_l, levels=levels)
-    tD = exp(ctx, tD, loop_m, loop_l, levels=levels)
-    tF = Gemm(ctx, tD, tE, loop_m, loop_n, loop_l, levels=levels)
+    tC = ops.Gemm(ctx, tA, tB, loop_m, loop_l, loop_k, levels=levels)
+    tD = ops.exp(ctx, tC, loop_m, loop_l, levels=levels)
+    tD = ops.exp(ctx, tD, loop_m, loop_l, levels=levels)
+    tF = ops.Gemm(ctx, tD, tE, loop_m, loop_n, loop_l, levels=levels)
 
     ctx.define_fuse(tF, levels)
     fuse_choice = ctx.get_fuse()
     fuse_choice.apply(tF, ctx)
 
     return [tF], [m, n, k, l]
-
-
-# create space
-def get_space(func, params, constraint=None):
-    ctx = Context()
-    ctx.enable_tuning()
-    func(ctx, *params)
-    ctx.space.set_constraint(constraint)
-    return ctx.space
-
-
-def generate_candidate(space, func, params):
-    ctx = Context()
-    ctx.set_space(space)
-    ctx.enable_tuning()
-    inputs, outputs, loops = func(ctx, *params)
-    return (inputs, outputs, loops, ctx)
-
-
-def generate_workload(inputs, outputs, loops, ctx):
-    graph = dir.make_prod_consum_graph(outputs[0])
-    workload = graph.generate_tileflow_workload(loops)
-    return workload
-
-
-def evaluate_results(inputs, outputs, loops, ctx, workload, hw_config):
-    kernel = arch_lower(ctx)
-    kernel = arch_build(kernel, target="tileflow")
-
-    # print(kernel)
-    perf = rt.run_tileflow(workload, hw_config, kernel,
-                           tileflow_path="/home/zchno/TileFlow/build/bin/tileflow")
-    return perf
-
-
-INPUT_BUFFER = None
-
-
-def worker(idx):
-    global INPUT_BUFFER
-    (hw_configs, candidates) = INPUT_BUFFER
-    hw_config = hw_configs[idx]
-    inputs, outputs, loops, ctx = candidates[idx]
-    workload = generate_workload(inputs, outputs, loops, ctx)
-    perf = evaluate_results(inputs, outputs, loops, ctx, workload, hw_config)
-    return ctx.config_key, perf
-
-
-def concurrent_work(hw_configs, candidates):
-    global INPUT_BUFFER
-    assert len(hw_configs) == len(candidates)
-    INPUT_BUFFER = (hw_configs, candidates)
-    results = []
-    with ProcessPool(os.cpu_count()) as pool:
-        future = pool.map(worker, range(len(candidates)), timeout=100)
-        iterator = future.result()
-
-        while True:
-            try:
-                result = next(iterator)
-            except StopIteration:
-                break
-            except TimeoutError as error:
-                print("Evaluate Timeout.", flush=True)
-                result = ({}, {"status_ok": False})
-            except Exception as error:
-                print(error)
-                result = ({}, {"status_ok": False})
-            results.append(result)
-    return results
 
 
 if __name__ == "__main__":
