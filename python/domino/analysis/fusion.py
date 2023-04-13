@@ -1,10 +1,11 @@
 from dominoc import ir, analysis
 from ..program_ir.arch import (
     ComputeLevel, MemoryLevel)
+from ..program_ir.block import AtomBlock
 from ..program_ir.stmt import (Evaluate, Var, Iterator, Range,
                                NdStore)
 from ..program_ir.simplify import (simplify_expr, substitute_expr)
-from ..program_ir.dsl import (Tensor, Loop, TreeContainer, SyntaxContext,
+from ..program_ir.dsl import (Tensor, Loop, TreeContainer, SyntaxContext, ScopeBlockContext,
                               TileBlockContext, StmtBlockContext, make_prod_consum_graph)
 from ..program_ir.functional import print_ir
 from ..passes import ProdConsumGraph
@@ -281,14 +282,17 @@ def find_position(tree: TreeContainer, level: int, tensor: Tensor):
             return
         else:
             for c in cur.children:
-                helper(c, dep + 1)
+                if isinstance(c.ctx, ScopeBlockContext):
+                    helper(c, dep)
+                else:
+                    helper(c, dep + 1)
 
     helper(tree, 0)
     assert position is not None
     return position
 
 
-def merge_tree(root: TreeContainer, main_tree: TreeContainer, branch_tree: TreeContainer, position: TreeContainer):
+def merge_tree(root: TreeContainer, main_tree: TreeContainer, branch_tree: TreeContainer, position: TreeContainer, scope: str):
     """Merge Tree Function for TreeContainer
 
     Args:
@@ -303,12 +307,21 @@ def merge_tree(root: TreeContainer, main_tree: TreeContainer, branch_tree: TreeC
     branch_levels = check_simple_tree(branch_tree)
     check_position_in_tree(main_tree, position)
     path = find_path(main_tree, position)
-    level = len(path)
+    level = 0
+    non_scope_path = []
+    for p in path:
+        if not isinstance(p.ctx, ScopeBlockContext):
+            level += 1
+            non_scope_path.append(p)
 
     assert len(branch_levels) > level, "The given position is out of range"
-    position.add_front_child(branch_levels[level])
+    scope_ctx = ScopeBlockContext(position.ctx.ir_builder, scope)
+    scope_node = TreeContainer(scope_ctx)
+    scope_node.children = position.children
+    position.children = [scope_node]
+    scope_node.add_front_child(branch_levels[level])
     for l in range(level):
-        path[l].ctx.merge_loops(branch_levels[l].ctx)
+        non_scope_path[l].ctx.merge_loops(branch_levels[l].ctx)
     # delete the original branch_tree
     new_children = []
     for c in root.children:
@@ -318,12 +331,16 @@ def merge_tree(root: TreeContainer, main_tree: TreeContainer, branch_tree: TreeC
 
 
 class FusionPoint:
-    def __init__(self, tensor: Tensor, level: int):
+    def __init__(self, tensor: Tensor, level: int, scope: str):
         self.tensor = tensor
         self.level = level
+        self.scope = scope
 
     def __str__(self):
-        return f"({self.tensor}, {self.level})"
+        return f"({self.tensor}, {self.level}, {self.scope})"
+
+    def __repr__(self):
+        return str(self)
 
 
 class FusionPlan:
@@ -358,8 +375,11 @@ class FusionPlan:
     def __str__(self):
         ret = ""
         for k, v in self.mapping.items():
-            ret += f"{k}: {v}\n"
+            ret += f"{k}: {v}; "
         return ret
+
+    def __repr__(self):
+        return str(self)
 
     def apply(self, output_tensors, ctx):
         if isinstance(output_tensors, Tensor):
@@ -373,7 +393,8 @@ class FusionPlan:
                 tensors.append(t)
         assert len(tensors) == len(ctx.stack[0].children)
 
-        tensor2loop = {k.var.id.value: v for k, v in zip(tensors, ctx.stack[0].children)}
+        tensor2loop = {k.var.id.value: v for k,
+                       v in zip(tensors, ctx.stack[0].children)}
         for t in self.tensor_order:
             fuse_point = self.mapping[t]
             if fuse_point.level == -1:
@@ -383,7 +404,8 @@ class FusionPlan:
             branch_tree = tensor2loop[t.var.id.value]
             position = find_position(
                 main_tree, fuse_point.level, fuse_point.tensor)
-            merge_tree(ctx.stack[0], main_tree, branch_tree, position)
+            merge_tree(ctx.stack[0], main_tree,
+                       branch_tree, position, fuse_point.scope)
             tensor2loop[t.var.id.value] = main_tree
 
 
@@ -467,7 +489,7 @@ def generate_fusion_plans(output_tensors, total_levels: int):
                 level_topper = cur_plan[start_tensor].level + 1
             else:
                 next_plan = cur_plan.clone()
-                next_plan[t] = FusionPoint(start_tensor, -1)
+                next_plan[t] = FusionPoint(start_tensor, -1, "Sequential")
                 if t in graph.read_links:
                     for inp in graph.read_links[t]:
                         if not graph.is_input_tensor(inp):
@@ -479,14 +501,13 @@ def generate_fusion_plans(output_tensors, total_levels: int):
                 # not the last tensor
                 # each corresponds to one fusion possibility
                 for l in range(level_topper, min(level_deeper + 1, total_levels)):
-                    if l % 2:
-                        continue
-                    next_plan = cur_plan.clone()
-                    next_plan[t] = FusionPoint(start_tensor, l)
-                    if t in graph.read_links:
-                        for inp in graph.read_links[t]:
-                            if not graph.is_input_tensor(inp):
-                                helper(inp, next_plan, next_visit, ans)
+                    for scope in ["Sequential", "Sharing", "Pipeline", "Parallel"]:
+                        next_plan = cur_plan.clone()
+                        next_plan[t] = FusionPoint(start_tensor, l, scope)
+                        if t in graph.read_links:
+                            for inp in graph.read_links[t]:
+                                if not graph.is_input_tensor(inp):
+                                    helper(inp, next_plan, next_visit, ans)
                 if start_tensor in cur_plan and start_tensor != cur_plan[start_tensor].tensor:
                     start_tensor = cur_plan[start_tensor].tensor
                     level_deeper = level_topper - 1

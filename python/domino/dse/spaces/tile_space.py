@@ -36,7 +36,7 @@ def split_to_factors(value: int, parts: int):
 
 
 class DimSplitSpace(UniformCategoricalSpace):
-    def __init__(self, length, nparts, constraints=None):
+    def __init__(self, length, nparts, policy, constraints=None):
         assert isinstance(length, int), "Only support static shape"
         assert isinstance(nparts, int) and nparts > 0
         assert length > 0
@@ -54,7 +54,7 @@ class DimSplitSpace(UniformCategoricalSpace):
                     break
             if valid:
                 filtered_choices.append(c)
-        super().__init__(filtered_choices)
+        super().__init__(filtered_choices, policy=policy)
 
 
 class MultiDimTileSpace(MultiDimSpace):

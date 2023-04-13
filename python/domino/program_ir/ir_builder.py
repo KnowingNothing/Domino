@@ -12,7 +12,7 @@ from typing import Optional, Union, List, Any, Dict
 from functools import reduce
 from .simplify import substitute_block, simplify, substitute_ir
 from ..passes import flatten_array_access
-from ..dse import MultiDimSpace, CategoricalSpace, CallablePolicy, spaces
+from ..dse import MultiDimSpace, CategoricalSpace, CallablePolicy, spaces, MultiDimKey, CategoricalRandomPolicy, AnnealingMutateOneDim
 from ..analysis import generate_fusion_plans
 
 __all__ = [
@@ -35,8 +35,8 @@ class IRBuilderContext(object):
         self.lower_to_tiles = False
         # tuning
         self.is_tuning_mode = False
-        self.space = MultiDimSpace()
-        self.config = None
+        self.space = MultiDimSpace(AnnealingMutateOneDim())
+        self.config_key = MultiDimKey(None)
 
     def enable_tuning(self, logfile="tmp_tuning_log.log"):
         self.is_tuning_mode = True
@@ -144,27 +144,31 @@ class IRBuilderContext(object):
         try:
             extent = loop.extent.value
             subspace = spaces.DimSplitSpace(
-                extent, nparts, constraints=constraints)
+                extent, nparts, policy=CategoricalRandomPolicy(), constraints=constraints)
             self.space.add_subspace(loop.name, subspace)
         except Exception as e:
             raise ValueError(f"Only support static shape\n{e}")
 
-    def get_split(self, loop: Loop, policy: CallablePolicy):
+    def get_split(self, loop: Loop):
         assert self.space.has_subspace(loop.name)
-        subspace = self.space.get_subspace(loop.name)
-        policy.set_inference_mode(not self.is_tuning_mode)
-        return subspace.get_next(policy)
+        # subspace = self.space.get_subspace(loop.name)
+        # key, value = subspace.get_next(not self.is_tuning_mode)
+        key, value = self.space.get_next_for(loop.name, not self.is_tuning_mode)
+        self.config_key.children[loop.name] = key
+        return value
 
     def define_fuse(self, final_tensor: Tensor, levels: int):
         if self.space.has_subspace("fuse"):
             return
         plans = generate_fusion_plans(final_tensor, 2 * levels-2)
         print(f"Totally {len(plans)} fusion plans")
-        self.space.add_subspace("fuse", CategoricalSpace(plans))
+        self.space.add_subspace("fuse", CategoricalSpace(plans, policy=CategoricalRandomPolicy()))
 
-    def get_fuse(self, policy: CallablePolicy):
-        policy.set_inference_mode(not self.is_tuning_mode)
-        return self.space.get_subspace("fuse").get_next(policy)
+    def get_fuse(self):
+        # key, value = self.space.get_subspace("fuse").get_next(not self.is_tuning_mode)
+        key, value = self.space.get_next_for("fuse", not self.is_tuning_mode)
+        self.config_key.children["fuse"] = key
+        return value
 
     # def spatial(self, loop: Loop, dim="x"):
     #     self.spatial_loop_set[loop] = dim

@@ -57,5 +57,5 @@ def run_tileflow(workload, arch, mapping, tileflow_path="tileflow", save_tmp_fil
     #     os.remove(mapping_file)
         # if os.path.exists(result_file) and os.path.isfile(result_file):
         #     os.remove(result_file)
-    
+
     return results
