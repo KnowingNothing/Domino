@@ -37,7 +37,7 @@ def tileflow_accelerator_generator(acc: TileFlowAcceleratorBase):
             "word_bits", "data_width", "block_size",
             "technology", "dram_type",
             "read_bandwidth", "write_bandwidth",
-            "bandwidth", "cluster_size"]
+            "bandwidth", "cluster_size", "sizeKB"]
         translate_keys = {
             "width": "width",
             "depth": "depth",
@@ -51,7 +51,8 @@ def tileflow_accelerator_generator(acc: TileFlowAcceleratorBase):
             "read_bandwidth": "read_bandwidth",
             "write_bandwidth": "write_bandwidth",
             "bandwidth": "bandwidth",
-            "cluster_size": "cluster-size"
+            "cluster_size": "cluster-size",
+            "sizeKB": "sizeKB"
         }
         for attr_name in attr_names:
             if hasattr(buf, attr_name) and getattr(buf, attr_name) is not None:

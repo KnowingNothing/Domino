@@ -12,3 +12,17 @@ def Gemm(ctx, tA, tB, loop_m, loop_l, loop_k, levels):
     GeneralOperator(ctx, [tA, tB, tC], [
                     loop_m, loop_l, loop_k], levels, gemm_func)
     return tC
+
+
+def BatchGemm(ctx, tA, tB, loop_b, loop_m, loop_n, loop_k, levels):
+    b, m, n = loop_b[0], loop_m[0], loop_n[0]
+    tC = dir.Tensor([b.extent, m.extent, n.extent],
+                    name="C", dtype="int16", ctx=ctx)
+
+    def bmm_func(A, B, C, b, m, n, k):
+        C[b, m, n] = C[b, m, n] + A[b, m, k] * B[b, k, n]
+
+    GeneralOperator(ctx, [tA, tB, tC], [loop_b, loop_m,
+                    loop_n, loop_k], levels, bmm_func)
+
+    return tC

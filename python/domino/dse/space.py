@@ -67,12 +67,20 @@ class MultiDimSpace(DesignSpace):
         self._record_get_name = set()
         self._cur_choice = None
         self._constraint = None
+        self._static_choice = None
 
     def prepare_next_choices(self, need_best=False):
         for i in range(5):
             self._next_choices.put(self.get_next(need_best))
 
+    def set_config(self, config_key):
+        if isinstance(config_key, str):
+            config_key = MultiDimKey.from_json(config_key)
+        self._static_choice = (config_key, self[config_key])
+
     def get_next_for(self, name, need_best=False):
+        if self._static_choice is not None:
+            return self._static_choice[0].children[name], self._static_choice[1][name]
         if name in self._record_get_name:
             self._cur_choice = None
             self._record_get_name.clear()

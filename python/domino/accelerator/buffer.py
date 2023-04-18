@@ -20,7 +20,8 @@ class Buffer(HardwareLevel):
         read_bandwidth: Optional[int] = None, # words per cycle
         write_bandwidth: Optional[int] = None, # words per cycle
         bandwidth: Optional[int] = None, # words per cycle
-        cluster_size: Optional[int] = None
+        cluster_size: Optional[int] = None,
+        sizeKB: Optional[int] = None
     ):
         super().__init__()
         self.name = name
@@ -42,3 +43,4 @@ class Buffer(HardwareLevel):
         self.write_bandwdith = write_bandwidth
         self.bandwidth = bandwidth
         self.cluster_size = cluster_size
+        self.sizeKB = sizeKB

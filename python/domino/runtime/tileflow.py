@@ -45,7 +45,10 @@ def run_tileflow(workload, arch, mapping, tileflow_path="tileflow", save_tmp_fil
                     if parts[0] in parse_results:
                         results[parts[0]] = parse_results[parts[0]](parts[1])
         if "Cycle" in results and "Energy" in results:
-            results["status_ok"] = True
+            if results["Cycle"] == 0:
+                results["status_ok"] = False
+            else:
+                results["status_ok"] = True
         else:
             results["status_ok"] = False
     except Exception as e:

@@ -22,6 +22,11 @@ class MultiDimKey:
             "children": {k: v.to_json() for k, v in self.children.items()}
         }
 
+    @staticmethod
+    def from_json(json_str):
+        obj = json.loads(json_str)
+        return MultiDimKey.make_multi_dim_key(obj)
+
     def __str__(self):
         return json.dumps(self.to_json())
 
@@ -39,9 +44,9 @@ class MultiDimKey:
             return MultiDimKey(int(k))
         elif isinstance(k, dict):
             ret = {}
-            for kk, vv in k.items():
+            for kk, vv in k["children"].items():
                 vvk = MultiDimKey.make_multi_dim_key(vv)
                 ret[kk] = vvk
-            return MultiDimKey(None, ret)
+            return MultiDimKey(k["value"], ret)
         else:
             raise ValueError(f"Can't convert {type(k)}: {k} to MultiDimKey.")

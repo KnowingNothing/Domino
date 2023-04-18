@@ -337,7 +337,12 @@ class FusionPoint:
         self.scope = scope
 
     def __str__(self):
-        return f"({self.tensor}, {self.level}, {self.scope})"
+        obj = {
+            "tensor": self.tensor.name,
+            "level": self.level,
+            "scope": self.scope
+        }
+        return str(obj)
 
     def __repr__(self):
         return str(self)
@@ -373,10 +378,7 @@ class FusionPlan:
         return FusionPlan({k: v for k, v in self.mapping.items()}, [x for x in self.tensor_order])
 
     def __str__(self):
-        ret = ""
-        for k, v in self.mapping.items():
-            ret += f"{k}: {v}; "
-        return ret
+        return str({t.name: v for t,v in self.mapping.items()})
 
     def __repr__(self):
         return str(self)
@@ -391,7 +393,7 @@ class FusionPlan:
         for t in graph.nodes:
             if not graph.is_input_tensor(t):
                 tensors.append(t)
-        assert len(tensors) == len(ctx.stack[0].children)
+        assert len(tensors) == len(ctx.stack[0].children), f"{len(tensors)} vs. {len(ctx.stack[0].children)}"
 
         tensor2loop = {k.var.id.value: v for k,
                        v in zip(tensors, ctx.stack[0].children)}

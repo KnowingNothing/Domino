@@ -1,7 +1,6 @@
 import domino.program_ir as dir
 import domino.accelerator as acc
 from tileflow import (
-    register_workload,
     ops, get_space, generate_candidate, concurrent_work)
 from tqdm import tqdm
 
@@ -89,7 +88,6 @@ if __name__ == "__main__":
     K = 64
     L = 512
 
-    @register_workload
     def static_gemm_exp_gemm(ctx, M, N, K, L):
         # use NameScope to allow the same name for different plan
         with dir.NameScope(only_capital=True):

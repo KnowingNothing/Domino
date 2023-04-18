@@ -39,7 +39,7 @@ class DimSplitSpace(UniformCategoricalSpace):
     def __init__(self, length, nparts, policy, constraints=None):
         assert isinstance(length, int), "Only support static shape"
         assert isinstance(nparts, int) and nparts > 0
-        assert length > 0
+        assert length > 0, length
         constraints = [] if constraints is None else constraints
         assert isinstance(constraints, (list, tuple))
         for c in constraints:
