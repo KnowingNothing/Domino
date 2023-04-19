@@ -117,9 +117,11 @@ def tileflow_accelerator_generator(acc: TileFlowAcceleratorBase):
             ret += f"[0..{engine.instance-1}]"
         ret += "\n"
         ret += f"{ind}attributes:\n"
-        attr_names = ["technology"]
+        attr_names = ["technology", "meshX", "meshY"]
         translate_keys = {
-            "technology": "technology"
+            "technology": "technology",
+            "meshX": "meshX",
+            "meshY": "meshY"
         }
         for attr_name in attr_names:
             if hasattr(engine, attr_name) and getattr(engine, attr_name) is not None:

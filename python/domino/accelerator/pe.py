@@ -14,12 +14,14 @@ class ALU(HardwareLevel):
 
 
 class Engine(HardwareLevel):
-    def __init__(self, name: str, technology: Optional[str] = None, instance: int = 1):
+    def __init__(self, name: str, technology: Optional[str] = None, instance: int = 1, meshX: Optional[int] = None, meshY: Optional[int] = None):
         super().__init__()
         self.name = name
         self.technology = technology
         self.instance = instance
         self.local = []
+        self.meshX = meshX
+        self.meshY = meshY
 
     def add_local(self, *level):
         if len(level) == 0:

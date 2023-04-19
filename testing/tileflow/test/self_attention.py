@@ -1,4 +1,5 @@
 import domino.program_ir as dir
+from tileflow import arch_lower, arch_build, Context
 
 
 def self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k):
@@ -20,9 +21,10 @@ def self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k
     l = dir.SLoop(r41.extent * r40.extent, name="l")
     l1, l0 = ctx.split(l, nparts=2, factors=[l.extent//16, 16])
 
-    L = ctx.Array([batch_size, num_heads, seq_len, seq_len],
-                   name="L", dtype=Q.dtype)
-    M = ctx.Array([batch_size, num_heads, seq_len], name="M", dtype=L.dtype)
+    L = dir.Tensor([batch_size, num_heads, seq_len, seq_len],
+                   name="L", dtype=Q.dtype, ctx=ctx)
+    M = dir.Tensor([batch_size, num_heads, seq_len],
+                   name="M", dtype=L.dtype, ctx=ctx)
 
     # ctx.spatial(m0)
     # ctx.spatial(n0)
@@ -86,26 +88,27 @@ def self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k
 
 
 if __name__ == "__main__":
-    ctx = dir.IRBuilderContext()
+    ctx = Context()
     batch_size = 64
     seq_len = 1024
     num_heads = 12
     model_k = 64
     Q = dir.Tensor([batch_size, num_heads, seq_len, model_k],
-                   name="Q", dtype="float16")
+                   name="Q", dtype="float16", ctx=ctx)
     K = dir.Tensor([batch_size, num_heads, seq_len, model_k],
-                   name="K", dtype="float16")
+                   name="K", dtype="float16", ctx=ctx)
     V = dir.Tensor([batch_size, num_heads, model_k, seq_len],
-                   name="V", dtype="float16")
+                   name="V", dtype="float16", ctx=ctx)
     Output = dir.Tensor([batch_size, num_heads, seq_len,
-                        model_k], name="Output", dtype="float16")
+                        model_k], name="Output", dtype="float16", ctx=ctx)
     # self_attention(ctx, Q, K, V, Output, batch_size,
     #                num_heads, seq_len, model_k)
 
     def static_func(ctx, Q, K, V, Output):
-        with dir.NameScope():
+        with dir.NameScope(only_capital=True):
             return self_attention(ctx, Q, K, V, Output, batch_size, num_heads, seq_len, model_k)
-    kernel = dir.arch_lower(static_func, [Q, K, V, Output], ctx=ctx)
+    static_func(ctx, Q, K, V, Output)
+    kernel = arch_lower(ctx)
     dir.print_ir(kernel)
-    kernel = dir.arch_build(kernel, ctx=ctx, target="tileflow")
+    kernel = arch_build(kernel, target="tileflow")
     print(kernel)

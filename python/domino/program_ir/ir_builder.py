@@ -160,7 +160,7 @@ class IRBuilderContext(object):
     def define_fuse(self, final_tensor: Tensor, levels: int):
         if self.space.has_subspace("fuse"):
             return
-        plans = generate_fusion_plans(final_tensor, 2 * levels-2)
+        plans = generate_fusion_plans(final_tensor, min(2 * levels, 7))
         print(f"Totally {len(plans)} fusion plans")
         self.space.add_subspace("fuse", CategoricalSpace(plans, policy=CategoricalRandomPolicy()))
 
@@ -296,7 +296,7 @@ class IRBuilderContext(object):
         if self.lower_to_tiles:
             iterators = []
             assert isinstance(cur.ctx.mem_level,
-                              str) and cur.ctx.mem_level[0] == 'L'
+                              str) and (cur.ctx.mem_level[0] == 'L' or cur.ctx.mem_level == "reg")
             level = int(cur.ctx.mem_level[1:])
             if (num_loops == 0):
                 if isinstance(body, Arch):

@@ -1,4 +1,5 @@
 import domino.program_ir as dir
+from tileflow import Context, arch_lower, arch_build
 
 
 def gemm_exp_gemm_dataflow(ctx, tA, tB, tC, tD, tE, tF, M, N, K, L):
@@ -23,24 +24,25 @@ def gemm_exp_gemm_dataflow(ctx, tA, tB, tC, tD, tE, tF, M, N, K, L):
 
 
 def test_gemm_exp_gemm_dataflow():
-    ctx = dir.IRBuilderContext()
+    ctx = Context()
     ctx.set_target_tileflow()
     M = 512
     N = 64
     K = 64
     L = 512
-    tA = dir.Tensor([M, K], name="A", dtype="int16")
-    tB = dir.Tensor([K, L], name="B", dtype="int16")
-    tC = dir.Tensor([M, L], name="C", dtype="int16")
-    tD = dir.Tensor([M, L], name="D", dtype="int16")
-    tE = dir.Tensor([L, N], name="E", dtype="int16")
-    tF = dir.Tensor([M, N], name="F", dtype="int16")
+    tA = dir.Tensor([M, K], name="A", dtype="int16", ctx=ctx)
+    tB = dir.Tensor([K, L], name="B", dtype="int16", ctx=ctx)
+    tC = dir.Tensor([M, L], name="C", dtype="int16", ctx=ctx)
+    tD = dir.Tensor([M, L], name="D", dtype="int16", ctx=ctx)
+    tE = dir.Tensor([L, N], name="E", dtype="int16", ctx=ctx)
+    tF = dir.Tensor([M, N], name="F", dtype="int16", ctx=ctx)
 
     def static_func(ctx, tA, tB, tC, tD, tE, tF):
         return gemm_exp_gemm_dataflow(ctx, tA, tB, tC, tD, tE, tF, M, N, K, L)
-    kernel = dir.arch_lower(static_func, [tA, tB, tC, tD, tE, tF], ctx=ctx)
+    static_func(ctx, tA, tB, tC, tD, tE, tF)
+    kernel = arch_lower(ctx)
     # dir.print_ir(kernel)
-    kernel = dir.arch_build(kernel, ctx=ctx, target="tileflow")
+    kernel = arch_build(kernel, target="tileflow")
     print(kernel)
 
 

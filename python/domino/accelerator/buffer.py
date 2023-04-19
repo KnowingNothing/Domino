@@ -7,7 +7,6 @@ class Buffer(HardwareLevel):
         self,
         name: str,
         buffer_class: str,
-        width: int,
         word_bits: int,
         depth: Optional[int] = None,
         data_width: Optional[int] = None,
@@ -21,7 +20,8 @@ class Buffer(HardwareLevel):
         write_bandwidth: Optional[int] = None, # words per cycle
         bandwidth: Optional[int] = None, # words per cycle
         cluster_size: Optional[int] = None,
-        sizeKB: Optional[int] = None
+        sizeKB: Optional[int] = None,
+        width: Optional[int] = None,
     ):
         super().__init__()
         self.name = name
@@ -29,7 +29,7 @@ class Buffer(HardwareLevel):
         assert buffer_class in ["DRAM", "SRAM", "regfile"]
         self.width = width
         self.meshX = meshX
-        if self.buffer_class in ["SRAM", "regfile"]:
+        if self.buffer_class in ["regfile"]:
             assert self.meshX is not None
         self.word_bits = word_bits
         self.depth = depth

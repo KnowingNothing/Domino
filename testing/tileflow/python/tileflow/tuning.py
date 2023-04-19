@@ -9,6 +9,7 @@ __all__ = [
     "generate_candidate",
     "generate_workload",
     "evaluate_results",
+    "sequential_work",
     "concurrent_work"
 ]
 
@@ -31,9 +32,9 @@ def generate_candidate(space, func, params):
     return (inputs, outputs, loops, ctx)
 
 
-def generate_workload(inputs, outputs, loops, ctx):
+def generate_workload(inputs, outputs, loops, ctx, fusion=True):
     graph = dir.make_prod_consum_graph(outputs[0])
-    workload = graph.generate_tileflow_workload(loops)
+    workload = graph.generate_tileflow_workload(loops, fusion=fusion)
     return workload
 
 
@@ -41,6 +42,8 @@ def evaluate_results(inputs, outputs, loops, ctx, workload, hw_config):
     kernel = arch_lower(ctx)
     kernel = arch_build(kernel, target="tileflow")
 
+    # print(workload)
+    # print(hw_config)
     # print(kernel)
     perf = rt.run_tileflow(workload, hw_config, kernel,
                            tileflow_path="/home/zchno/TileFlow/build/bin/tileflow")
@@ -52,18 +55,28 @@ INPUT_BUFFER = None
 
 def worker(idx):
     global INPUT_BUFFER
-    (hw_configs, candidates) = INPUT_BUFFER
+    (hw_configs, candidates, fusion) = INPUT_BUFFER
     hw_config = hw_configs[idx]
     inputs, outputs, loops, ctx = candidates[idx]
-    workload = generate_workload(inputs, outputs, loops, ctx)
+    workload = generate_workload(inputs, outputs, loops, ctx, fusion=fusion)
     perf = evaluate_results(inputs, outputs, loops, ctx, workload, hw_config)
     return ctx.config_key, perf
 
 
-def concurrent_work(hw_configs, candidates):
+def sequential_work(hw_configs, candidates, fusion=True):
+    global INPUT_BUFFER
+    INPUT_BUFFER = (hw_configs, candidates, fusion)
+    assert len(hw_configs) == len(candidates)
+    results = []
+    for i in range(len(candidates)):
+        results.append(worker(i))
+    return results
+
+
+def concurrent_work(hw_configs, candidates, fusion=True):
     global INPUT_BUFFER
     assert len(hw_configs) == len(candidates)
-    INPUT_BUFFER = (hw_configs, candidates)
+    INPUT_BUFFER = (hw_configs, candidates, fusion)
     results = []
     with ProcessPool(os.cpu_count()) as pool:
         future = pool.map(worker, range(len(candidates)), timeout=100)

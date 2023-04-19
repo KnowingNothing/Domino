@@ -83,7 +83,7 @@ class ProdConsumGraph(object):
             ret[self.nodes[k]] = self.nodes[v]
         return ret
 
-    def generate_tileflow_workload(self, loops):
+    def generate_tileflow_workload(self, loops, fusion=True):
         result = "problem:\n"
         result += "  io:\n"
         input_tensors = []
@@ -97,7 +97,10 @@ class ProdConsumGraph(object):
             if self.is_output_tensor(t):
                 output_tensors.append(t)
         result += f"    ins: {' '.join([str(t.var.id.value) for t in input_tensors])}\n"
-        result += f"    outs: {' '.join([str(t.var.id.value) for t in output_tensors])}\n"
+        if fusion:
+            result += f"    outs: {' '.join([str(t.var.id.value) for t in output_tensors])}\n"
+        else:
+            result += f"    outs: {' '.join([str(t.var.id.value) for t in compute_tensors])}\n"
         result += f"  dimensions: [{','.join([l.var.id.value for l in loops])}]\n"
         result += f"  instance:\n"
         for l in loops:

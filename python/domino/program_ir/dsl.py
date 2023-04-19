@@ -57,7 +57,7 @@ class NameGenerator(object):
     def gen_name(self, hint: str):
         if self.only_capital:
             if hint not in self.name_cache:
-                if hint in self.choices:
+                if hint in self.choices and hint not in self.capital_used:
                     self.capital_used.add(hint)
                     self.name_cache[hint] = hint
                     return hint

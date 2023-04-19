@@ -378,7 +378,7 @@ class FusionPlan:
         return FusionPlan({k: v for k, v in self.mapping.items()}, [x for x in self.tensor_order])
 
     def __str__(self):
-        return str({t.name: v for t,v in self.mapping.items()})
+        return str({t.name: v for t, v in self.mapping.items()})
 
     def __repr__(self):
         return str(self)
@@ -393,7 +393,8 @@ class FusionPlan:
         for t in graph.nodes:
             if not graph.is_input_tensor(t):
                 tensors.append(t)
-        assert len(tensors) == len(ctx.stack[0].children), f"{len(tensors)} vs. {len(ctx.stack[0].children)}"
+        assert len(tensors) == len(
+            ctx.stack[0].children), f"{len(tensors)} vs. {len(ctx.stack[0].children)}"
 
         tensor2loop = {k.var.id.value: v for k,
                        v in zip(tensors, ctx.stack[0].children)}
@@ -502,14 +503,31 @@ def generate_fusion_plans(output_tensors, total_levels: int):
             while True:
                 # not the last tensor
                 # each corresponds to one fusion possibility
+                if t in graph.feed_links:
+                    for cons in graph.feed_links[t]:
+                        if cons != t and cur_plan[cons].level >= 0:
+                            level_deeper = min(
+                                level_deeper, cur_plan[cons].level)
+                # print(cur_plan)
+                # print(t.name, start_tensor.name, level_topper, level_deeper)
                 for l in range(level_topper, min(level_deeper + 1, total_levels)):
-                    for scope in ["Sequential", "Sharing", "Pipeline", "Parallel"]:
+                    if l % 2:
+                        continue
+                    for scope in ["Sequential", "Sharing", "Pipeline"]:
                         next_plan = cur_plan.clone()
                         next_plan[t] = FusionPoint(start_tensor, l, scope)
                         if t in graph.read_links:
                             for inp in graph.read_links[t]:
-                                if not graph.is_input_tensor(inp):
-                                    helper(inp, next_plan, next_visit, ans)
+                                # all consumers of inp are visited
+                                all_outputs_resolved = True
+                                if inp in graph.feed_links:
+                                    for inp_cons in graph.feed_links[inp]:
+                                        if inp_cons != inp and inp_cons not in next_visit:
+                                            all_outputs_resolved = False
+                                            break
+                                if all_outputs_resolved:
+                                    if not graph.is_input_tensor(inp):
+                                        helper(inp, next_plan, next_visit, ans)
                 if start_tensor in cur_plan and start_tensor != cur_plan[start_tensor].tensor:
                     start_tensor = cur_plan[start_tensor].tensor
                     level_deeper = level_topper - 1

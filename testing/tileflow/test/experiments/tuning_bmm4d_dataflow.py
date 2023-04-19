@@ -10,16 +10,15 @@ from tqdm import tqdm
 import time
 
 
-def self_attention_compute(ctx, tQ, tK, tV, batch, num_heads, seq_len, hidden, levels):
+def bmm4d_compute(ctx, tQ, tK, batch, num_heads, seq_len, hidden, levels):
     """
     tQ: [batch, num_heads, seq_len, model_k]
     tK: [batch, num_heads, model_k, seq_len]
-    tV: [batch, num_heads, seq_len, model_k]
     """
 
     model_k = hidden // num_heads
-    b, h, m, n = [dir.Loop(x, name=y)
-                  for (x, y) in zip([batch, num_heads, seq_len, model_k], "BHMN")]
+    b, h, m = [dir.Loop(x, name=y)
+                  for (x, y) in zip([batch, num_heads, seq_len], "BHM")]
     k, l = [dir.Loop(x, name=y) for (x, y) in zip([model_k, seq_len], "KL")]
 
     ctx.define_split(b, nparts=levels*2)
@@ -33,7 +32,6 @@ def self_attention_compute(ctx, tQ, tK, tV, batch, num_heads, seq_len, hidden, l
         small_l = dir.Loop(512, name="L")
         ctx.define_split(small_l, nparts=levels*2)
     ctx.define_split(h, nparts=levels*2)
-    ctx.define_split(n, nparts=levels*2)
     ctx.define_split(k, nparts=levels*2)
     t1 = time.time()
     factors_b = ctx.get_split(b)
@@ -44,7 +42,6 @@ def self_attention_compute(ctx, tQ, tK, tV, batch, num_heads, seq_len, hidden, l
     else:
         factors_m = ctx.get_split(small_m)
         factors_l = ctx.get_split(small_l)
-    factors_n = ctx.get_split(n)
     factors_k = ctx.get_split(k)
     # print(factors_h)
     # print(factors_m)
@@ -76,52 +73,33 @@ def self_attention_compute(ctx, tQ, tK, tV, batch, num_heads, seq_len, hidden, l
         factors_l = helper(factors_l)
         sub_l = ctx.split(
             l, factors=[factors_l[0] * seq_len // 512, *factors_l[1:]])
-    sub_n = ctx.split(n, factors=helper(factors_n))
     sub_k = ctx.split(k, factors=helper(factors_k))
 
     loop_b = [b, *sub_b]
     loop_h = [h, *sub_h]
     loop_m = [m, *sub_m]
-    loop_n = [n, *sub_n]
     loop_k = [k, *sub_k]
     loop_l = [l, *sub_l]
 
     tC = ops.BatchGemm4D(ctx, tQ, tK, loop_b, loop_h, loop_m,
                          loop_l, loop_k, levels=levels)
-    tD = ops.softmax4D(ctx, tC, loop_b, loop_h, loop_m, loop_l, levels=levels)
-    tF = ops.BatchGemm4D(ctx, tD, tV, loop_b, loop_h, loop_m,
-                         loop_n, loop_l, levels=levels)
 
-    t3 = time.time()
-    ctx.define_fuse(tF, levels)
-    t4 = time.time()
-    fuse_choice = ctx.get_fuse()
-    t5 = time.time()
-    fuse_choice.apply(tF, ctx)
-    t6 = time.time()
-
-    # print(f"Use {t2-t1} s to get splits.")
-    # print(f"Use {t4-t3} s to define fuse.")
-    # print(f"Use {t5-t4} s to get fuse.")
-    # print(f"Use {t6-t5} s to apply fuse.")
-
-    return [tF], [b, h, m, n, k, l]
+    return [tC], [b, h, m, k, l]
 
 
 def run(levels, hw_config, batch, num_heads, seq_len, hidden, trials):
 
-    def static_self_attention(ctx, B, H, M, N):
+    def static_bmm4d(ctx, B, H, M, N):
         # use NameScope to allow the same name for different plan
         with dir.NameScope(only_capital=True):
             tQ = dir.Tensor([B, H, M, N//H], name="Q", dtype="int16", ctx=ctx)
             tK = dir.Tensor([B, H, N//H, M], name="K", dtype="int16", ctx=ctx)
-            tV = dir.Tensor([B, H, M, N//H], name="V", dtype="int16", ctx=ctx)
-            [tF], loops = self_attention_compute(
-                ctx, tQ, tK, tV, *[B, H, M, N], levels=levels)
-            return [tQ, tK, tV], [tF], loops
+            [tF], loops = bmm4d_compute(
+                ctx, tQ, tK, *[B, H, M, N], levels=levels)
+            return [tQ, tK], [tF], loops
 
     sp_beg = time.time()
-    space = get_space(static_self_attention, [
+    space = get_space(static_bmm4d, [
                       batch, num_heads, seq_len, hidden])
     sp_end = time.time()
     print(f"Use {sp_end - sp_beg} s to get space.")
@@ -139,7 +117,7 @@ def run(levels, hw_config, batch, num_heads, seq_len, hidden, trials):
         for i in range(steps):
             hw_configs.append(hw_config)
             candidate = generate_candidate(
-                space, static_self_attention, [batch, num_heads, seq_len, hidden])
+                space, static_bmm4d, [batch, num_heads, seq_len, hidden])
             candidates.append(candidate)
         st_end = time.time()
         print(f"Use {st_end - st_beg} s to generate candidates.")
