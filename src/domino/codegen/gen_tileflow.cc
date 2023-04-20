@@ -80,12 +80,16 @@ std::string CodeGenTileFlow::ImplVisit(MemoryLevel op) {
           ASSERT(iter.defined());
           std::string name = renaming(Visit(iter->var));
           ConstInt factor = iter->range->extent.as<ConstIntNode>();
-          ASSERT(factor.defined());
-          if (factor_map.count(name)) {
-            factor_map[name] *= factor->value;
+          if (factor.defined()) {
+            if (factor_map.count(name)) {
+              factor_map[name] *= factor->value;
+            } else {
+              factor_map[name] = factor->value;
+            }
           } else {
-            factor_map[name] = factor->value;
+            factor_map[name] = -1;
           }
+
           if (!visit.count(iter->var)) {
             loops.push_back(iter);
             visit.insert(iter->var);
@@ -96,7 +100,12 @@ std::string CodeGenTileFlow::ImplVisit(MemoryLevel op) {
           ASSERT(iter.defined());
           std::string name = renaming(Visit(iter->var));
           if (factor_map.count(name)) {
-            factors << " " << name << "=" << factor_map[name];
+            factors << " " << name << "=";
+            if (factor_map[name] == -1) {
+              factors << "?";
+            } else {
+              factors << factor_map[name];
+            }
             perm << renaming(Visit(iter->var));
             factor_map.erase(name);
           }
