@@ -3,7 +3,7 @@ import os
 import tempfile
 
 
-def run_tileflow(workload, arch, mapping, tileflow_path="tileflow", save_tmp_file=False):
+def run_tileflow(workload, arch, mapping, tileflow_path="tileflow", save_tmp_file=False, unlimited_resource=False, tileflow_mapper_metric=None):
     tmpdir = tempfile.TemporaryDirectory()
     workload_file = os.path.join(tmpdir.name, "tmp_tileflow_workload.yaml")
     arch_file = os.path.join(tmpdir.name, "tmp_tileflow_arch_file.yaml")
@@ -15,11 +15,27 @@ def run_tileflow(workload, arch, mapping, tileflow_path="tileflow", save_tmp_fil
         fout.write(arch)
     with open(mapping_file, "w") as fout:
         fout.write(mapping)
+
+    option_file = os.path.join(
+        tmpdir.name, "tmp_tileflow_option_file.yaml")
+
+    objective = "energy" if tileflow_mapper_metric is not None and "energy" in tileflow_mapper_metric else "cycle"
+    with open(option_file, "w") as fout:
+        fout.write("check:\n")
+        fout.write(f"  mem: {not unlimited_resource}\n")
+        fout.write(f"  spatial: {not unlimited_resource}\n")
+
+        fout.write(f"tileflow-mapper:\n")
+        fout.write(f"  objective: {objective}")
+    # with open(option_file, "r") as fin:
+    #     for line in fin:
+    #         print(line, flush=True)
     command = [
         tileflow_path,
         workload_file,
         arch_file,
         mapping_file,
+        option_file
     ]
 
     process = Popen(command, stdout=PIPE, stdin=PIPE)
@@ -29,21 +45,30 @@ def run_tileflow(workload, arch, mapping, tileflow_path="tileflow", save_tmp_fil
         fout.write(stdout.decode())
     parse_results = {
         "Cycle": int,
-        "Energy": float
+        "Energy": float,
+        "MEM::L0": float,
+        "MEM::L1": float,
+        "MEM::L2": float,
+        "MEM::L3": float
     }
     results = {}
     in_results = False
     try:
         with open(result_file, "r") as fin:
             for line in fin:
-                if line.startswith("***TileFlow Result"):
+                if "***TileFlow Result" in line:
                     in_results = True
-                if line.startswith("***TileFlow Result Ends"):
+                if "***TileFlow Result Ends" in line:
                     in_results = False
                 if in_results:
                     parts = line.split(",")
                     if parts[0] in parse_results:
-                        results[parts[0]] = parse_results[parts[0]](parts[1])
+                        if parts[0] in results:
+                            results[parts[0]] = max(
+                                results[parts[0]], parse_results[parts[0]](parts[1]))
+                        else:
+                            results[parts[0]] = parse_results[parts[0]](
+                                parts[1])
         if "Cycle" in results and "Energy" in results:
             if results["Cycle"] == 0:
                 results["status_ok"] = False
