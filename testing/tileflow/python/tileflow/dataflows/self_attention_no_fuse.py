@@ -63,46 +63,50 @@ def self_attention_dataflow_2levels(ctx, tQ, tK, tV, batch, num_heads, seq_len, 
     k2, k1, k0 = sub_k
     l2, l1, l0 = sub_l
 
-    with ctx.tile("L2", [b2, h2, m2], "Temporal"):
-        with ctx.sequential():
-            with ctx.pipeline():
-                with ctx.tile("L2", [b1, h1, m1], "Spatial"):
-                    with ctx.tile("L1", [b0, h0, m0, l2, k2], "Temporal"):
-                        with ctx.tile("L1", [l1, k1], "Spatial"):
-                            with ctx.tile("L0", [l0, k0], "Temporal"):
-                                tA[b, h, m, l] = tA[b, h, m, l] + \
-                                    tQ[b, h, m, k] * tK[b, h, k, l]
-                with ctx.sequential():
-                    with ctx.tile("L2", [b1, h1, m1], "Spatial"):
-                        with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
-                            with ctx.tile("L1", [l1], "Spatial"):
-                                with ctx.tile("L0", [l0], "Temporal"):
-                                    tB[b, h, m] = dir.max(
-                                        tB[b, h, m], tA[b, h, m, l])
-                    with ctx.tile("L2", [b1, h1, m1], "Spatial"):
-                        with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
-                            with ctx.tile("L1", [l1], "Spatial"):
-                                with ctx.tile("L0", [l0], "Temporal"):
-                                    tC[b, h, m, l] = tA[b, h, m, l] - \
-                                        tB[b, h, m]
-                    with ctx.tile("L2", [b1, h1, m1], "Spatial"):
-                        with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
-                            with ctx.tile("L1", [l1], "Spatial"):
-                                with ctx.tile("L0", [l0], "Temporal"):
-                                    tD[b, h, m, l] = dir.exp(
-                                        tC[b, h, m, l])
-                    with ctx.tile("L2", [b1, h1, m1], "Spatial"):
-                        with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
-                            with ctx.tile("L1", [l1], "Spatial"):
-                                with ctx.tile("L0", [l0], "Temporal"):
-                                    tE[b, h, m] = tE[b, h, m] + \
-                                        tD[b, h, m, l]
-                    with ctx.tile("L2", [b1, h1, m1], "Spatial"):
-                        with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
-                            with ctx.tile("L1", [l1], "Spatial"):
-                                with ctx.tile("L0", [l0], "Temporal"):
-                                    tF[b, h, m, l] = tD[b, h, m, l] / \
-                                        tE[b, h, m]
+    with ctx.sequential():
+        with ctx.tile("L2", [b2, h2, m2], "Temporal"):
+            with ctx.tile("L2", [b1, h1, m1], "Spatial"):
+                with ctx.tile("L1", [b0, h0, m0, l2, k2], "Temporal"):
+                    with ctx.tile("L1", [l1, k1], "Spatial"):
+                        with ctx.tile("L0", [l0, k0], "Temporal"):
+                            tA[b, h, m, l] = tA[b, h, m, l] + \
+                                tQ[b, h, m, k] * tK[b, h, k, l]
+        with ctx.tile("L2", [b2, h2, m2], "Temporal"):
+            with ctx.tile("L2", [b1, h1, m1], "Spatial"):
+                with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
+                    with ctx.tile("L1", [l1], "Spatial"):
+                        with ctx.tile("L0", [l0], "Temporal"):
+                            tB[b, h, m] = dir.max(
+                                tB[b, h, m], tA[b, h, m, l])
+        with ctx.tile("L2", [b2, h2, m2], "Temporal"):
+            with ctx.tile("L2", [b1, h1, m1], "Spatial"):
+                with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
+                    with ctx.tile("L1", [l1], "Spatial"):
+                        with ctx.tile("L0", [l0], "Temporal"):
+                            tC[b, h, m, l] = tA[b, h, m, l] - \
+                                tB[b, h, m]
+        with ctx.tile("L2", [b2, h2, m2], "Temporal"):
+            with ctx.tile("L2", [b1, h1, m1], "Spatial"):
+                with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
+                    with ctx.tile("L1", [l1], "Spatial"):
+                        with ctx.tile("L0", [l0], "Temporal"):
+                            tD[b, h, m, l] = dir.exp(
+                                tC[b, h, m, l])
+        with ctx.tile("L2", [b2, h2, m2], "Temporal"):
+            with ctx.tile("L2", [b1, h1, m1], "Spatial"):
+                with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
+                    with ctx.tile("L1", [l1], "Spatial"):
+                        with ctx.tile("L0", [l0], "Temporal"):
+                            tE[b, h, m] = tE[b, h, m] + \
+                                tD[b, h, m, l]
+        with ctx.tile("L2", [b2, h2, m2], "Temporal"):
+            with ctx.tile("L2", [b1, h1, m1], "Spatial"):
+                with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
+                    with ctx.tile("L1", [l1], "Spatial"):
+                        with ctx.tile("L0", [l0], "Temporal"):
+                            tF[b, h, m, l] = tD[b, h, m, l] / \
+                                tE[b, h, m]
+        with ctx.tile("L2", [b2, h2, m2], "Temporal"):
             with ctx.tile("L2", [b1, h1, m1], "Spatial"):
                 with ctx.tile("L1", [b0, h0, m0, n2, l2], "Temporal"):
                     with ctx.tile("L1", [n1, l1], "Spatial"):
@@ -169,48 +173,64 @@ def self_attention_dataflow_3levels(ctx, tQ, tK, tV, batch, num_heads, seq_len, 
     k2, k1, k0 = ctx.split(k, factors=[*factors_k, 1])
     l2, l1, l0 = ctx.split(l, factors=[*factors_l, 1])
 
-    with ctx.tile("L3", [b4, h4, m4], "Temporal"):
-        with ctx.tile("L3", [b3, h3, m3], "Spatial"):
-            with ctx.tile("L2", [b2, h2, m2], "Temporal"):
-                with ctx.sequential():
-                    with ctx.pipeline():
-                        with ctx.tile("L2", [b1, h1, m1], "Spatial"):
-                            with ctx.tile("L1", [b0, h0, m0, l2, k2], "Temporal"):
-                                with ctx.tile("L1", [l1, k1], "Spatial"):
-                                    with ctx.tile("L0", [l0, k0], "Temporal"):
-                                        tA[b, h, m, l] = tA[b, h, m, l] + \
-                                            tQ[b, h, m, k] * tK[b, h, k, l]
-                        with ctx.sequential():
-                            with ctx.tile("L2", [b1, h1, m1], "Spatial"):
-                                with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
-                                    with ctx.tile("L1", [l1], "Spatial"):
-                                        with ctx.tile("L0", [l0], "Temporal"):
-                                            tB[b, h, m] = dir.max(
-                                                tB[b, h, m], tA[b, h, m, l])
-                            with ctx.tile("L2", [b1, h1, m1], "Spatial"):
-                                with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
-                                    with ctx.tile("L1", [l1], "Spatial"):
-                                        with ctx.tile("L0", [l0], "Temporal"):
-                                            tC[b, h, m, l] = tA[b, h,
-                                                                m, l] - tB[b, h, m]
-                            with ctx.tile("L2", [b1, h1, m1], "Spatial"):
-                                with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
-                                    with ctx.tile("L1", [l1], "Spatial"):
-                                        with ctx.tile("L0", [l0], "Temporal"):
-                                            tD[b, h, m, l] = dir.exp(
-                                                tC[b, h, m, l])
-                            with ctx.tile("L2", [b1, h1, m1], "Spatial"):
-                                with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
-                                    with ctx.tile("L1", [l1], "Spatial"):
-                                        with ctx.tile("L0", [l0], "Temporal"):
-                                            tE[b, h, m] = tE[b, h, m] + \
-                                                tD[b, h, m, l]
-                            with ctx.tile("L2", [b1, h1, m1], "Spatial"):
-                                with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
-                                    with ctx.tile("L1", [l1], "Spatial"):
-                                        with ctx.tile("L0", [l0], "Temporal"):
-                                            tF[b, h, m, l] = tD[b, h,
-                                                                m, l] / tE[b, h, m]
+    with ctx.sequential():
+        with ctx.tile("L3", [b4, h4, m4], "Temporal"):
+            with ctx.tile("L3", [b3, h3, m3], "Spatial"):
+                with ctx.tile("L2", [b2, h2, m2], "Temporal"):
+                    with ctx.tile("L2", [b1, h1, m1], "Spatial"):
+                        with ctx.tile("L1", [b0, h0, m0, l2, k2], "Temporal"):
+                            with ctx.tile("L1", [l1, k1], "Spatial"):
+                                with ctx.tile("L0", [l0, k0], "Temporal"):
+                                    tA[b, h, m, l] = tA[b, h, m, l] + \
+                                        tQ[b, h, m, k] * tK[b, h, k, l]
+        with ctx.tile("L3", [b4, h4, m4], "Temporal"):
+            with ctx.tile("L3", [b3, h3, m3], "Spatial"):
+                with ctx.tile("L2", [b2, h2, m2], "Temporal"):
+                    with ctx.tile("L2", [b1, h1, m1], "Spatial"):
+                        with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
+                            with ctx.tile("L1", [l1], "Spatial"):
+                                with ctx.tile("L0", [l0], "Temporal"):
+                                    tB[b, h, m] = dir.max(
+                                        tB[b, h, m], tA[b, h, m, l])
+        with ctx.tile("L3", [b4, h4, m4], "Temporal"):
+            with ctx.tile("L3", [b3, h3, m3], "Spatial"):
+                with ctx.tile("L2", [b2, h2, m2], "Temporal"):
+                    with ctx.tile("L2", [b1, h1, m1], "Spatial"):
+                        with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
+                            with ctx.tile("L1", [l1], "Spatial"):
+                                with ctx.tile("L0", [l0], "Temporal"):
+                                    tC[b, h, m, l] = tA[b, h,
+                                                        m, l] - tB[b, h, m]
+        with ctx.tile("L3", [b4, h4, m4], "Temporal"):
+            with ctx.tile("L3", [b3, h3, m3], "Spatial"):
+                with ctx.tile("L2", [b2, h2, m2], "Temporal"):
+                    with ctx.tile("L2", [b1, h1, m1], "Spatial"):
+                        with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
+                            with ctx.tile("L1", [l1], "Spatial"):
+                                with ctx.tile("L0", [l0], "Temporal"):
+                                    tD[b, h, m, l] = dir.exp(
+                                        tC[b, h, m, l])
+        with ctx.tile("L3", [b4, h4, m4], "Temporal"):
+            with ctx.tile("L3", [b3, h3, m3], "Spatial"):
+                with ctx.tile("L2", [b2, h2, m2], "Temporal"):
+                    with ctx.tile("L2", [b1, h1, m1], "Spatial"):
+                        with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
+                            with ctx.tile("L1", [l1], "Spatial"):
+                                with ctx.tile("L0", [l0], "Temporal"):
+                                    tE[b, h, m] = tE[b, h, m] + \
+                                        tD[b, h, m, l]
+        with ctx.tile("L3", [b4, h4, m4], "Temporal"):
+            with ctx.tile("L3", [b3, h3, m3], "Spatial"):
+                with ctx.tile("L2", [b2, h2, m2], "Temporal"):
+                    with ctx.tile("L2", [b1, h1, m1], "Spatial"):
+                        with ctx.tile("L1", [b0, h0, m0, l2], "Temporal"):
+                            with ctx.tile("L1", [l1], "Spatial"):
+                                with ctx.tile("L0", [l0], "Temporal"):
+                                    tF[b, h, m, l] = tD[b, h,
+                                                        m, l] / tE[b, h, m]
+        with ctx.tile("L3", [b4, h4, m4], "Temporal"):
+            with ctx.tile("L3", [b3, h3, m3], "Spatial"):
+                with ctx.tile("L2", [b2, h2, m2], "Temporal"):
                     with ctx.tile("L2", [b1, h1, m1], "Spatial"):
                         with ctx.tile("L1", [b0, h0, m0, n2, l2], "Temporal"):
                             with ctx.tile("L1", [n1, l1], "Spatial"):
@@ -221,7 +241,7 @@ def self_attention_dataflow_3levels(ctx, tQ, tK, tV, batch, num_heads, seq_len, 
     return [tG], [b, h, m, n, k, l]
 
 
-def get_flat_mgran_dataflow(levels, batch, num_heads, seq_len, hidden, define_tiling_space=True):
+def get_self_attention_no_fuse_dataflow(levels, batch, num_heads, seq_len, hidden, define_tiling_space=True):
     def static_self_attention(ctx):
         # use NameScope to allow the same name for different plan
         B = batch

@@ -13,7 +13,8 @@ __all__ = [
     "evaluate_results",
     "sequential_work",
     "concurrent_work",
-    "tuning"
+    "tuning",
+    "inference"
 ]
 
 # create space
@@ -156,9 +157,9 @@ def tuning(hw_config, func, params, trials, metric_type, sequential=False, resou
     print("Get space...")
     space = get_space(func, params)
 
-    epoch = (trials+99)//100
-    steps = 100
-    if trials < 100:
+    steps = (trials+9)//10
+    epoch = 10
+    if trials < 10:
         epoch = 1
         steps = trials
     results = []
@@ -222,7 +223,7 @@ def tuning(hw_config, func, params, trials, metric_type, sequential=False, resou
     return best_perf, best_config_key, best_config
 
 
-def tileflow_mapper(hw_config, func, params, metric_type, resource_check=True, debug=False, tileflow_path=None):
+def inference(hw_config, func, params, metric_type, resource_check=True, debug=False, tileflow_path=None):
     ctx = Context()
     inputs, outputs, loops = func(ctx, *params)
     workload = generate_workload(inputs, outputs, loops, ctx, fusion=True)

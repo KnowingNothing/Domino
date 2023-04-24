@@ -8,7 +8,7 @@ import argparse
 
 
 def run(levels, hw_config, batch, num_heads, seq_len, hidden, trials, metric_type, debug=False, resource_check=True, define_tiling_space=False):
-    dataflow = td.get_tileflow_self_attention_dataflow(
+    dataflow = td.get_chimera_self_attention_dataflow(
         levels, batch, num_heads, seq_len, hidden, define_tiling_space=define_tiling_space)
 
     best_perf, best_config_key, best_config = tuning(
@@ -31,7 +31,7 @@ shapes = [
 
 
 """example
-python tileflow_dataflow.py --metric=1e9/latency --trials 1 |& tee trace.log
+python chimera_self_attention.py --metric=1e9/latency --trials 1 |& tee trace.log
 """
 
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     parser.add_argument("--number", type=int,
                         help="Number of shapes evaluated [1]", default=1)
     parser.add_argument("--trials", type=int,
-                        help="Tuning trials [1000]", default=1000)
+                        help="Tuning trials [1000]", default=100)
     parser.add_argument("--debug", default=False, action="store_true")
     parser.add_argument("--check_resource", default=False, action="store_true")
     parser.add_argument("--define_tiling_space",
@@ -64,7 +64,7 @@ if __name__ == "__main__":
         num_heads = shape[0]
         seq_len = shape[1]
         hidden = shape[2]
-        for i, (levels, hw) in enumerate(zip([2, 2, 3, 3], [get_edge_small(), get_edge_large(), get_cloud_small(), get_cloud_large()])):
+        for i, (levels, hw) in enumerate(zip([2, 3], [get_edge_small(), get_cloud_small()])):
             print(
                 f"Current Task for metric={args.metric}, batch={args.batch}, num_heads={num_heads}, seq_len={seq_len}, hidden={hidden} hw_id={i}")
             hw_config = acc.tileflow_accelerator_generator(hw)

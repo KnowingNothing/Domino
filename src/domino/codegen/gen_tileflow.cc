@@ -154,7 +154,7 @@ std::string CodeGenTileFlow::ImplVisit(MemoryLevel op) {
         if (!is_top) decrease_indent();
         decrease_indent();
         if (is_top) {
-          oss << indent << "node-type: Scope\n" << indent << "  type: " << op->scope << "\n";
+          oss << indent << "node-type: Scope\n" << indent << "type: " << op->scope << "\n";
         } else {
           oss << indent << "- node-type: Scope\n" << indent << "  type: " << op->scope << "\n";
         }

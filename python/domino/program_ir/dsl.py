@@ -563,6 +563,8 @@ class Loop(object):
         return self.iter_kind
 
     def __add__(self, other: Any):
+        if isinstance(other, Loop):
+            return self.var + other.var
         return self.var + other
 
     def __radd__(self, other):

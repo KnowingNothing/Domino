@@ -8,7 +8,7 @@ __all__ = ["get_edge_small", "get_cloud_small",
 def get_edge_small():
     MAC = acc.ALU(name="mac", alu_class="intmac",
                   datawidth=16, meshX=32*32, instance=32*32)
-    Reg = acc.Buffer(name="L0", instance=32*32, buffer_class="regfile", block_size=3, depth=1,
+    Reg = acc.Buffer(name="L0", instance=32*32, buffer_class="regfile", block_size=6, depth=1,
                      meshX=32*32, word_bits=16, technology="16nm", read_bandwidth=3, write_bandwidth=3)
     PE = acc.Engine(name="PE")
     PE.add_local(Reg, MAC)
@@ -30,7 +30,7 @@ def get_edge_small():
 def get_edge_large():
     MAC = acc.ALU(name="mac", alu_class="intmac",
                   datawidth=16, meshX=32*32, instance=32*32)
-    Reg = acc.Buffer(name="L0", instance=32*32, buffer_class="regfile", block_size=3, depth=1,
+    Reg = acc.Buffer(name="L0", instance=32*32, buffer_class="regfile", block_size=6, depth=1,
                      meshX=32*32, word_bits=16, technology="16nm", read_bandwidth=3, write_bandwidth=3)
     PE = acc.Engine(name="PE")
     PE.add_local(Reg, MAC)
@@ -52,7 +52,7 @@ def get_edge_large():
 def get_cloud_small():
     MAC = acc.ALU(name="mac", alu_class="intmac",
                   datawidth=16, meshX=256*256, instance=256*256)
-    Reg = acc.Buffer(name="L0", instance=256*256, buffer_class="regfile", block_size=3, depth=1,
+    Reg = acc.Buffer(name="L0", instance=256*256, buffer_class="regfile", block_size=6, depth=1,
                      meshX=256*256, word_bits=16, technology="16nm", read_bandwidth=3, write_bandwidth=3)
     PE = acc.Engine(name="PE")
     PE.add_local(Reg, MAC)
@@ -79,7 +79,7 @@ def get_cloud_small():
 def get_cloud_large():
     MAC = acc.ALU(name="mac", alu_class="intmac",
                   datawidth=16, meshX=256*256, instance=256*256)
-    Reg = acc.Buffer(name="L0", instance=256*256, buffer_class="regfile", block_size=3, depth=1,
+    Reg = acc.Buffer(name="L0", instance=256*256, buffer_class="regfile", block_size=6, depth=1,
                      meshX=256*256, word_bits=16, technology="16nm", read_bandwidth=3, write_bandwidth=3)
     PE = acc.Engine(name="PE")
     PE.add_local(Reg, MAC)

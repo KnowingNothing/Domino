@@ -1,6 +1,7 @@
 from subprocess import Popen, PIPE
 import os
 import tempfile
+import signal
 
 
 def run_tileflow(workload, arch, mapping, tileflow_path="tileflow", save_tmp_file=False, unlimited_resource=False, tileflow_mapper_metric=None):
@@ -41,16 +42,25 @@ def run_tileflow(workload, arch, mapping, tileflow_path="tileflow", save_tmp_fil
     process = Popen(command, stdout=PIPE, stdin=PIPE)
     stdout, stderr = process.communicate()
     process.wait()
+
+    def singal_handler(signal, frame):
+        os.killpg(os.getpgid(process.pid), 9)
+
+    signal.signal(signal.SIGINT, singal_handler)
+
     with open(result_file, "w") as fout:
         fout.write(stdout.decode())
     parse_results = {
         "Cycle": int,
         "Energy": float,
-        "MEM::L0": float,
-        "MEM::L1": float,
-        "MEM::L2": float,
-        "MEM::L3": float
+        "mac::Flops": float,
     }
+    for name in ["MEM", "SPATIAL"]:
+        for level in ["L0", "L1", "L2", "L3"]:
+            parse_results[f"{name}::{level}"] = float
+    for level in ["L0", "L1", "L2", "L3"]:
+        for name in ["Accesses", "Read", "Fill", "Update", "CapUtil", "SpatialUtil", "SlowDown"]:
+            parse_results[f"{level}::{name}"] = float
     results = {}
     in_results = False
     try:

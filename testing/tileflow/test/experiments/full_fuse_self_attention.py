@@ -7,21 +7,10 @@ import domino.accelerator as acc
 import argparse
 
 
-def run(dataflow_name, levels, hw_config, batch, num_heads, seq_len, hidden, trials, metric_type, debug=False, resource_check=True, define_tiling_space=False, use_tuning=True):
-    if dataflow_name == "rgran":
-        dataflow = td.get_flat_rgran_dataflow(
-            levels, batch, num_heads, seq_len, hidden, define_tiling_space=define_tiling_space)
-    elif dataflow_name == "hgran":
-        dataflow = td.get_flat_hgran_dataflow(
-            levels, batch, num_heads, seq_len, hidden, define_tiling_space=define_tiling_space)
-    elif dataflow_name == "bgran":
-        dataflow = td.get_flat_bgran_dataflow(
-            levels, batch, num_heads, seq_len, hidden, define_tiling_space=define_tiling_space)
-    elif dataflow_name == "mgran":
-        dataflow = td.get_flat_mgran_dataflow(
-            levels, batch, num_heads, seq_len, hidden, define_tiling_space=define_tiling_space)
-    else:
-        raise RuntimeError("Unknown dataflow")
+def run(levels, hw_config, batch, num_heads, seq_len, hidden, trials, metric_type, debug=False, resource_check=True, define_tiling_space=False):
+    dataflow = td.get_self_attention_full_fuse_dataflow(
+        levels, batch, num_heads, seq_len, hidden, define_tiling_space=define_tiling_space)
+
     best_perf, best_config_key, best_config = tuning(
         hw_config, dataflow, [], trials, metric_type, sequential=debug, debug=debug, resource_check=resource_check)
     return best_perf, best_config_key, best_config
@@ -42,14 +31,12 @@ shapes = [
 
 
 """example
-python flat_dataflow.py --dataflow=rgran --metric=1e9/latency --trials 1 |& tee trace.log
+python full_fuse_self_attention.py --metric=1e9/latency --trials 1 |& tee trace.log
 """
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataflow", type=str,
-                        help="Specify the dataflow of FLAT [rgran, hgran, bgran, mgran]")
     parser.add_argument(
         "--metric", type=str, help="Evaluation metric type [1e9/latency, 1e9/energy, Utilization_L0, Utilization_L1, Utilization_L2, Utilization_L3]", default="1e9/latency")
     parser.add_argument("--batch", type=int,
@@ -79,21 +66,21 @@ if __name__ == "__main__":
         hidden = shape[2]
         for i, (levels, hw) in enumerate(zip([2, 3], [get_edge_small(), get_cloud_small()])):
             print(
-                f"Current Task for dataflow={args.dataflow}, metric={args.metric}, batch={args.batch}, num_heads={num_heads}, seq_len={seq_len}, hidden={hidden} hw_id={i}")
+                f"Current Task for metric={args.metric}, batch={args.batch}, num_heads={num_heads}, seq_len={seq_len}, hidden={hidden} hw_id={i}")
             hw_config = acc.tileflow_accelerator_generator(hw)
-            perf, key, config = run(args.dataflow,
-                                    levels, hw_config, batch, num_heads, seq_len, hidden, trials, metric_type=metric_type, debug=args.debug, resource_check=args.check_resource, define_tiling_space=args.define_tiling_space)
+            perf, key, config = run(
+                levels, hw_config, batch, num_heads, seq_len, hidden, trials, metric_type=metric_type, debug=args.debug, resource_check=args.check_resource, define_tiling_space=args.define_tiling_space)
             results.append((perf, key, config, seq_len, i))
             print(
-                "dataflow,batch,seq_len,num_heads,hidden,metric,seq_len,hw_id,key,config,perf")
+                "batch,seq_len,num_heads,hidden,metric,seq_len,hw_id,key,config,perf")
             print(
-                f"{args.dataflow},{batch},{shape[1]},{shape[0]},{shape[2]},{metric_type},{seq_len},{i},{key},{config},{perf}")
+                f"{batch},{shape[1]},{shape[0]},{shape[2]},{metric_type},{seq_len},{i},{key},{config},{perf}")
         results_for_shape.append((shape, results))
     print("###############################################")
     for shape, results in results_for_shape:
         print(
-            "dataflow,batch,seq_len,num_heads,hidden,metric,seq_len,hw_id,key,config,perf")
+            "batch,seq_len,num_heads,hidden,metric,seq_len,hw_id,key,config,perf")
         for res in results:
             perf, key, config, seq_len, i = res
             print(
-                f"{args.dataflow},{batch},{shape[1]},{shape[0]},{shape[2]},{metric_type},{seq_len},{i},{key},{config},{perf}")
+                f"{batch},{shape[1]},{shape[0]},{shape[2]},{metric_type},{seq_len},{i},{key},{config},{perf}")
