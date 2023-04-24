@@ -223,8 +223,14 @@ def tuning(hw_config, func, params, trials, metric_type, sequential=False, resou
     return best_perf, best_config_key, best_config
 
 
-def inference(hw_config, func, params, metric_type, resource_check=True, debug=False, tileflow_path=None):
+def inference(hw_config, func, params, config_key, metric_type, resource_check=True, debug=False, tileflow_path=None):
     ctx = Context()
+    ctx.enable_tuning()
+    func(ctx, *params)
+    space = ctx.space
+    space.set_config(config_key)
+    ctx = Context()
+    ctx.set_space(space)
     inputs, outputs, loops = func(ctx, *params)
     workload = generate_workload(inputs, outputs, loops, ctx, fusion=True)
     perf = evaluate_results(inputs, outputs, loops, ctx, workload,
