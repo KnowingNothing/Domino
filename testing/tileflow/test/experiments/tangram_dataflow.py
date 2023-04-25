@@ -17,13 +17,13 @@ def run(levels, hw_config, batch, height, width, in_channel, out_channel_1, out_
     return best_perf, best_config_key, best_config
 
 
-def replay(logfile, dataflow_name, hw_id, batch, num_heads, seq_len, hidden, metric_type, debug=False, resource_check=True, define_tiling_space=True, layout="nhwc"):
+def replay(logfile, hw_id, batch, height, width, in_channel, out_channel_1, out_channel_2, metric_type, debug=False, resource_check=True, define_tiling_space=True, layout="nhwc", second_kernel_size=3):
     hw = [(2, get_edge_small()), (3, get_cloud_small())]
     levels = hw[hw_id][0]
     hw_config = acc.tileflow_accelerator_generator(
         hw[hw_id][1])
     dataflow = td.get_tangram_dataflow(
-        levels, batch, height, width, in_channel, out_channel_1, out_channel_2, define_tiling_space=define_tiling_space, layout=layout)
+        levels, batch, height, width, in_channel, out_channel_1, out_channel_2, define_tiling_space=define_tiling_space, layout=layout, second_kernel_size=second_kernel_size)
 
     with open(logfile, "r") as fin:
         work = False
@@ -34,13 +34,16 @@ def replay(logfile, dataflow_name, hw_id, batch, num_heads, seq_len, hidden, met
                 parts = line.split(',{')
                 if len(parts) == 4:
                     first_parts = parts[0].split(",")
-                    dataflow_, batch_, seq_len_, num_heads_, hidden_, metric_, seq_len__, hw_id_ = first_parts
+                    batch_, height_, width_, in_channel_, out_channel_1_, out_channel_2_, metric_, hw_id_ = first_parts
+                    print(first_parts)
+                    print(batch, height, width, in_channel,
+                          out_channel_1, out_channel_2, metric_)
                     second_parts = json.loads("{" + parts[1])
                     third_parts = json.loads(
                         ("{" + parts[2]).replace("'", '"'))
                     forth_parts = json.loads(
                         ("{" + parts[3]).replace("'", '"').replace("True", "1"))
-                    if int(hw_id_) == hw_id and dataflow_name == dataflow_ and batch == int(batch_) and seq_len == int(seq_len_) and num_heads == int(num_heads_) and hidden == int(hidden_) and metric_ == metric_type:
+                    if int(hw_id_) == hw_id and batch == int(batch_) and height == int(height_) and width == int(width_) and in_channel == int(in_channel_) and out_channel_1 == int(out_channel_1_) and out_channel_2 == int(out_channel_2_) and metric_ == metric_type:
                         perf, _, _ = inference(hw_config, dataflow, [], json.dumps(
                             second_parts), metric_type, resource_check=resource_check, debug=debug)
                         return perf
@@ -48,14 +51,13 @@ def replay(logfile, dataflow_name, hw_id, batch, num_heads, seq_len, hidden, met
     raise RuntimeError("No such log entry found.")
 
 
-def replay_config(config, dataflow_name, hw_id, batch, num_heads, seq_len, hidden, metric_type, debug=False, resource_check=True, define_tiling_space=True, layout="nhwc"):
+def replay_config(config, hw_id, batch, height, width, in_channel, out_channel_1, out_channel_2, metric_type, debug=False, resource_check=True, define_tiling_space=True, layout="nhwc", second_kernel_size=3):
     hw = [(2, get_edge_small()), (3, get_cloud_small())]
     levels = hw[hw_id][0]
     hw_config = acc.tileflow_accelerator_generator(
         hw[hw_id][1])
     dataflow = td.get_tangram_dataflow(
-        levels, batch, height, width, in_channel, out_channel_1, out_channel_2, define_tiling_space=define_tiling_space, layout=layout)
-
+        levels, batch, height, width, in_channel, out_channel_1, out_channel_2, define_tiling_space=define_tiling_space, layout=layout, second_kernel_size=second_kernel_size)
     print(config)
     perf, _, _ = inference(hw_config, dataflow, [],
                            config, metric_type, resource_check=resource_check, debug=debug)
@@ -69,6 +71,9 @@ shapes = [
     (64, 56, 56, 128, 64),  # Darknet-19
     (128, 28, 28, 256, 128),  # Darknet-19
     (16, 227, 227, 64, 16),  # Squeezenet-V1.1
+    (64, 56, 56, 64, 64),
+    (64, 56, 56, 128, 128),
+    (256, 56, 56, 256, 64)
 ]
 
 
@@ -101,6 +106,8 @@ if __name__ == "__main__":
                         help="The hw id to inference", default=0)
     parser.add_argument("--config_key", type=str, default="",
                         help="Manual Config Key")
+    parser.add_argument("--second_kernel_size", type=int,
+                        help="Kernel size of the second convolution", default=1)
 
     args = parser.parse_args()
     batch = args.batch
@@ -110,15 +117,13 @@ if __name__ == "__main__":
 
     if args.inference:
         shape = shapes[args.begin]
-        num_heads = shape[0]
-        seq_len = shape[1]
-        hidden = shape[2]
+        in_channel, height, width, out_channel_1, out_channel_2 = shape
         if args.config_key:
-            perf = replay_config(args.config_key.replace("'", '"'), args.dataflow, args.inference_hw, batch, num_heads, seq_len,
-                                 hidden, args.metric, args.debug, args.check_resource, args.define_tiling_space, args.layout)
+            perf = replay_config(args.config_key.replace("'", '"'), args.inference_hw, batch, height, width, in_channel, out_channel_1, out_channel_2,
+                                 args.metric, args.debug, args.check_resource, args.define_tiling_space, args.layout, second_kernel_size=args.second_kernel_size)
         else:
-            perf = replay(args.logfile, args.dataflow, args.inference_hw, batch, num_heads, seq_len,
-                          hidden, args.metric, args.debug, args.check_resource, args.define_tiling_space, args.layout)
+            perf = replay(args.logfile, args.inference_hw, batch, height, width, in_channel, out_channel_1, out_channel_2,
+                          args.metric, args.debug, args.check_resource, args.define_tiling_space, args.layout, second_kernel_size=args.second_kernel_size)
         print(perf)
 
     else:

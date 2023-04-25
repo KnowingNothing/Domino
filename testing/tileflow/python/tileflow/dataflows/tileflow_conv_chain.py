@@ -2,14 +2,14 @@ import domino.program_ir as dir
 from ..ops import Conv2d, Conv2d_nchw
 
 
-def conv_chain_dataflow(ctx, tI, tW1, tW2, batch, height, width, in_channel, out_channel_1, out_channel_2, levels, define_tiling_space=True):
+def conv_chain_dataflow(ctx, tI, tW1, tW2, batch, height, width, in_channel, out_channel_1, out_channel_2, levels, define_tiling_space=True, second_kernel_size=3):
     """
     tA: [batch, height, width, in_channel]
     tB: [out_channel_1, kh, kw, in_channel]
     tC: [out_channel_2, kh, kw, out_channel_1]
     """
     b, h, w, c, l, k, r, s, u, v = [dir.Loop(x, name=y) for (x, y) in zip(
-        [batch, height, width, in_channel, out_channel_1, out_channel_2, 3, 3, 3, 3], "BHWCLKRSUV")]
+        [batch, height, width, in_channel, out_channel_1, out_channel_2, 3, 3, second_kernel_size, second_kernel_size], "BHWCLKRSUV")]
 
     if define_tiling_space:
         ctx.define_split(b, nparts=2*levels)
@@ -79,14 +79,14 @@ def conv_chain_dataflow(ctx, tI, tW1, tW2, batch, height, width, in_channel, out
     return [tB], [b, h, w, c, l, k, r, s, u, v]
 
 
-def conv_chain_nchw_dataflow(ctx, tI, tW1, tW2, batch, height, width, in_channel, out_channel_1, out_channel_2, levels, define_tiling_space=True):
+def conv_chain_nchw_dataflow(ctx, tI, tW1, tW2, batch, height, width, in_channel, out_channel_1, out_channel_2, levels, define_tiling_space=True, second_kernel_size=3):
     """
     tA: [batch, height, width, in_channel]
     tB: [out_channel_1, kh, kw, in_channel]
     tC: [out_channel_2, kh, kw, out_channel_1]
     """
     b, h, w, c, l, k, r, s, u, v = [dir.Loop(x, name=y) for (x, y) in zip(
-        [batch, height, width, in_channel, out_channel_1, out_channel_2, 3, 3, 3, 3], "BHWCLKRSUV")]
+        [batch, height, width, in_channel, out_channel_1, out_channel_2, 3, 3, second_kernel_size, second_kernel_size], "BHWCLKRSUV")]
 
     if define_tiling_space:
         ctx.define_split(b, nparts=2*levels)
@@ -156,7 +156,7 @@ def conv_chain_nchw_dataflow(ctx, tI, tW1, tW2, batch, height, width, in_channel
     return [tB], [b, h, w, c, l, k, r, s, u, v]
 
 
-def get_tileflow_conv_chain_dataflow(levels, batch, height, width, in_channel, out_channel_1, out_channel_2, define_tiling_space=True, layout="nhwc"):
+def get_tileflow_conv_chain_dataflow(levels, batch, height, width, in_channel, out_channel_1, out_channel_2, define_tiling_space=True, layout="nhwc", second_kernel_size=3):
     def static_func(ctx):
         # use NameScope to allow the same name for different plan
         with dir.NameScope(only_capital=True):
@@ -165,21 +165,21 @@ def get_tileflow_conv_chain_dataflow(levels, batch, height, width, in_channel, o
                                 name="I", dtype="int16", ctx=ctx)
                 tW1 = dir.Tensor([out_channel_1, 3, 3, in_channel],
                                  name="X", dtype="int16", ctx=ctx)
-                tW2 = dir.Tensor([out_channel_2, 3, 3, out_channel_1],
+                tW2 = dir.Tensor([out_channel_2, second_kernel_size, second_kernel_size, out_channel_1],
                                  name="Y", dtype="int16", ctx=ctx)
 
                 [tB], loops = conv_chain_dataflow(
-                    ctx, tI, tW1, tW2, batch, height, width, in_channel, out_channel_1, out_channel_2, levels, define_tiling_space=define_tiling_space)
+                    ctx, tI, tW1, tW2, batch, height, width, in_channel, out_channel_1, out_channel_2, levels, define_tiling_space=define_tiling_space, second_kernel_size=second_kernel_size)
             elif layout == "nchw":
                 tI = dir.Tensor([batch, in_channel, height, width],
                                 name="I", dtype="int16", ctx=ctx)
                 tW1 = dir.Tensor([out_channel_1, in_channel, 3, 3],
                                  name="X", dtype="int16", ctx=ctx)
-                tW2 = dir.Tensor([out_channel_2, out_channel_1, 3, 3],
+                tW2 = dir.Tensor([out_channel_2, out_channel_1, 1, 1],
                                  name="Y", dtype="int16", ctx=ctx)
 
                 [tB], loops = conv_chain_nchw_dataflow(
-                    ctx, tI, tW1, tW2, batch, height, width, in_channel, out_channel_1, out_channel_2, levels, define_tiling_space=define_tiling_space)
+                    ctx, tI, tW1, tW2, batch, height, width, in_channel, out_channel_1, out_channel_2, levels, define_tiling_space=define_tiling_space, second_kernel_size=second_kernel_size)
             else:
                 raise RuntimeError(f"Unknown layout {layout}.")
             return [tI, tW1, tW2], [tB], loops
