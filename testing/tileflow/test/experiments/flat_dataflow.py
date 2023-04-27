@@ -149,16 +149,28 @@ if __name__ == "__main__":
 
     if args.inference:
         shape = shapes[args.begin]
-        num_heads = shape[0]
-        seq_len = shape[1]
-        hidden = shape[2]
-        if args.config_key:
-            perf = replay_config(args.config_key.replace("'", '"'), args.dataflow, args.inference_hw, batch, num_heads, seq_len,
-                                 hidden, args.metric, args.debug, args.check_resource, args.define_tiling_space)
-        else:
-            perf = replay(args.logfile, args.dataflow, args.inference_hw, batch, num_heads, seq_len,
-                          hidden, args.metric, args.debug, args.check_resource, args.define_tiling_space)
-        print(perf)
+        results = []
+        for shape in shapes[args.begin:args.begin+args.number]:
+            num_heads = shape[0]
+            seq_len = shape[1]
+            hidden = shape[2]
+            if args.config_key:
+                perf = replay_config(args.config_key.replace("'", '"'), args.dataflow, args.inference_hw, batch, num_heads, seq_len,
+                                    hidden, args.metric, args.debug, args.check_resource, args.define_tiling_space)
+            else:
+                perf = replay(args.logfile, args.dataflow, args.inference_hw, batch, num_heads, seq_len,
+                            hidden, args.metric, args.debug, args.check_resource, args.define_tiling_space)
+            results.append(perf)
+        with open("tmp.log", "w") as fout:
+            fout.write("mac,L0,L1,L2,Sum,Energy\n")
+            for perf in results:
+                l1 = perf['mac::Energy']
+                l2 = perf['L0::Energy']
+                l3 = perf['L1::Energy']
+                l4 = perf['L2::Energy']
+                total = l1 + l2 + l3 + l4
+                energy = perf["Energy"]
+                fout.write(f"{l1},{l2},{l3},{l4},{total},{energy}\n")
 
     else:
         results_for_shape = []

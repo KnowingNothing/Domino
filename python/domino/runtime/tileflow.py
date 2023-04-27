@@ -54,12 +54,13 @@ def run_tileflow(workload, arch, mapping, tileflow_path="tileflow", save_tmp_fil
         "Cycle": int,
         "Energy": float,
         "mac::Flops": float,
+        "mac::Energy": float,
     }
     for name in ["MEM", "SPATIAL"]:
         for level in ["L0", "L1", "L2", "L3"]:
             parse_results[f"{name}::{level}"] = float
     for level in ["L0", "L1", "L2", "L3"]:
-        for name in ["Accesses", "Read", "Fill", "Update", "CapUtil", "SpatialUtil", "SlowDown"]:
+        for name in ["Accesses", "Read", "Fill", "Update", "CapUtil", "SpatialUtil", "SlowDown", "Energy"]:
             parse_results[f"{level}::{name}"] = float
     results = {}
     in_results = False
