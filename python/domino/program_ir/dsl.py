@@ -7,6 +7,7 @@ from .block import _to_block
 from ..passes import (get_input_tensor_vars, ProdConsumGraph,
                       get_input_tensor_indices)
 from typing import List, Union, Any, Optional
+from functools import reduce
 
 
 __all__ = [
