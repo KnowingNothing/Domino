@@ -466,7 +466,7 @@ class ExprSimplifier : public ExprMutator {
         return ConstUInt::make(new_value, op->dtype);
       }
     }
-    return Mod::make(Visit(op->a), Visit(op->b));
+    return FloorDiv::make(Visit(op->a), Visit(op->b));
   }
 
   Expr operator()(IRBase expr) override { return Visit(expr); }
