@@ -40,6 +40,7 @@ __all__ = [
     "StmtBlockContext",
     "TileBlockContext",
     "AllocBlockContext",
+    "AttrBlockContext",
     "ReMapBlockContext",
     "ScopeBlockContext",
     "TreeContainer",
@@ -79,23 +80,26 @@ class NameGenerator(object):
                 name = parts[0] + f"_{v}"
                 return name
 
+
 class DefaultNameScope:
     def __init__(self):
         self.gen = NameGenerator()
-        
+
     def gen_name(self, hint: str):
         return self.gen.gen_name(hint)
-        
+
+
 class NameScope:
     current = DefaultNameScope()
+
     def __init__(self, only_capital=False):
         self.pre = NameScope.current
         self.gen = NameGenerator(only_capital)
         NameScope.current = self
-        
+
     def gen_name(self, hint: str):
         return self.gen.gen_name(hint)
-        
+
     def __enter__(self):
         return
 
@@ -134,7 +138,7 @@ class Tensor(object):
             shape: List[Union[int, Expr]],
             name: str = "T",
             dtype: Union[DType, str] = "float32",
-            ctx = None):
+            ctx=None):
         self.shape = shape
         self.name = NameScope.current.gen_name(name)
         self.dtype = dtype
@@ -462,7 +466,7 @@ class Compute(object):
         self.value = value
         self.operation = operation
         self.reduce_axis = reduce_axis
-        
+
     def as_stmt(self):
         load = self.tensor_view.as_expr()
         return NdStore(load.mem_ref, load.indices, self.value)
@@ -763,6 +767,10 @@ class Array(object):
         self.slices = tuple(slice(0, s, 1)
                             for s in self.shape) if slices is None else tuple(slices)
         assert len(self.slices) == len(self.shape)
+        self.offset = 0
+
+    def set_offset(self, offset):
+        self.offset = offset
 
     @property
     def dtype(self):
@@ -836,7 +844,7 @@ class Array(object):
         if len(new_shape):
             return Array(self.ir_builder, self.var, new_shape, scope=self.scope, origin=self, slices=keys)
         else:
-            return NdLoad(MemRef(self.var, 0), self.calculate_slice_indices(indices))
+            return NdLoad(MemRef(self.var, self.offset), self.calculate_slice_indices(indices))
 
     def __setitem__(self, keys, value):
         if not isinstance(keys, tuple):
@@ -888,6 +896,17 @@ class AllocBlockContext(BlockContext):
         var = Var(dtype, name)
         self.array = Array(ir_builder, var, shape, scope=scope)
         self.ir_builder.bind_array(var, self.array)
+        node = TreeContainer(self)
+        self.ir_builder.stack[-1].add_child(node)
+        self.ir_builder.stack.append(node)
+
+
+class AttrBlockContext(BlockContext):
+    def __init__(self, ir_builder, key: str, var: Var, value: Expr):
+        super(AttrBlockContext, self).__init__(ir_builder)
+        self.key = key
+        self.var = var
+        self.value = value
         node = TreeContainer(self)
         self.ir_builder.stack[-1].add_child(node)
         self.ir_builder.stack.append(node)
@@ -975,7 +994,7 @@ class TileBlockContext(BlockContext):
         self.mem_level = mem_level
         self.loops = loops
         self.annotation = annotation
-        
+
     def merge_loops(self, other: "TileBlockContext"):
         assert self.mem_level == other.mem_level
         assert self.annotation == other.annotation
@@ -1061,19 +1080,19 @@ class TreeContainer(object):
     def add_child(self, child):
         assert isinstance(child, TreeContainer)
         self.children.append(child)
-        
+
     def add_front_child(self, child):
         assert isinstance(child, TreeContainer)
         self.children = [child] + self.children
 
     def is_root(self):
         return self.ctx is None
-    
+
     def walk(self, callback):
         callback(self)
         for c in self.children:
             c.walk(callback)
-            
+
     def post_order_walk(self, callback):
         for c in self.children:
             c.post_order_walk(callback)

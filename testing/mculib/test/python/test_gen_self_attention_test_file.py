@@ -8,7 +8,7 @@ def test_gen_self_attention():
      matmul2_offset, bmm0_input_offset, bmm0_output_offset, softmax_input_offset,
      softmax_exp_offset, softmax_output_offset, bmm1_input_offset, bmm1_output_offset,
      clip_min, clip_max] = [
-        32, 64, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -128, 127
+        32, 64, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -128, 127
     ]
     values = [seq_len, hidden, num_heads, input_offset, matmul0_offset, matmul1_offset,
               matmul2_offset, bmm0_input_offset, bmm0_output_offset, softmax_input_offset,

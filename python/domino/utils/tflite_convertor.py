@@ -9,7 +9,7 @@ from domino.graph_ir import Tensor, ConstTensor, Attribute, ActivationAttr, Op, 
 from domino.program_ir import ConstInt, ConstFloat, ExprList, make_const
 from domino.type_system.dtype import DType, GeneralDType
 from domino.type_system.ttype import ShapeType
-from domino.graph_ir.quantize import ClipQuantParam, QuantParam, ScaleQuantParam, TensorQuantParam
+from domino.graph_ir.quantize import ClipQuantParam, QuantParam, ScaleQuantParam, TensorQuantParam, TensorScaleQuantParam
 
 
 try:
@@ -119,11 +119,13 @@ def get_tflite_tensor(model, subgraph, tensor_idx):
                 if not np.all(zero_point == 0):
                     raise RuntimeError(
                         "Invalid zero points for quantization")
-                zero_point = int(zero_point[0])
+                qnn_params = TensorScaleQuantParam(scale, zero_point)
 
             elif tflite_scale.size == 1 and tflite_zero_point.size == 1:
                 scale = float(tflite_scale[0])
                 zero_point = int(tflite_zero_point[0])
+                qnn_params = ScaleQuantParam(ConstFloat(
+                    scale, 32), ConstInt(zero_point, 32))
 
             else:
                 raise NotImplementedError()
@@ -132,13 +134,11 @@ def get_tflite_tensor(model, subgraph, tensor_idx):
             is_qnn_params_valid = False
             scale = 0
             zero_point = 0
-
+            qnn_params = ScaleQuantParam(ConstFloat(
+                    scale, 32), ConstInt(zero_point, 32))
         else:
             raise NotImplementedError()
-
-        if is_qnn_params_valid:
-            qnn_params = ScaleQuantParam(ConstFloat(
-                scale, 32), ConstInt(zero_point, 32))
+            
     return TfliteTensor(tensor_idx, tensor, buffer, qnn_params)
 
 
@@ -909,11 +909,14 @@ class ConvertContext(object):
 
 
 class TfliteConvertor(object):
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: Optional[str] = None) -> None:
         self.model_path = path
         print(f"Using tflite version {tflite.__version__}.")
 
-    def parse(self):
+    def parse(self, path: Optional[str] = None):
+        if path is not None:
+            self.model_path = path
+        assert self.model_path is not None, "Should set model_path before parsing."
         model = load_tflite_model(self.model_path)
         assert model.SubgraphsLength() == 1, "only support one subgraph"
         subgraph = model.Subgraphs(0)

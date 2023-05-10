@@ -5,17 +5,22 @@ from typing import Set, Optional, Union, List, Any
 from domino import utils
 from domino.graph_ir import Op, Tensor, Graph
 from domino.graph_pass import set_graph_precision, GraphPrinter, GraphVisitor
-from domino.utils import ONNXConvertor
+from domino.utils import ONNXConvertor, TfliteConvertor
 
 
-
-def get_graph(path: str):
-    convertor = ONNXConvertor(path, inference=True)
-    graph = convertor.parse()
+def get_onnx_graph(path: str):
+    convertor = ONNXConvertor(inference=True)
+    graph = convertor.parse(path)
     return graph
 
 
-def test_convertor():
+def get_tflite_graph(path: str):
+    convertor = TfliteConvertor()
+    graph = convertor.parse(path)
+    return graph
+
+
+def test_onnx_convertor():
     # config_path = "new_resnet18_pareto.json"
     # model_path = "raw_resnet18.onnx"
     # config_path = "new_mobilenetv2_pareto.json"
@@ -28,9 +33,18 @@ def test_convertor():
     # model_path = "unet_13_256.onnx"
     model_path = "simplified_bert_base.onnx"
 
-    graph = get_graph(model_path)
-    
+    graph = get_onnx_graph(model_path)
+
+
+def test_tflite_convertor():
+    model_path = "./mcunet-tflite-models/mcunet-5fps_imagenet.tflite"
+    graph = get_tflite_graph(model_path)
+    # printer = GraphPrinter()
+    # res = printer(graph)
+    # print(res)
+    assert len(graph.subgraphs) == 1
 
 
 if __name__ == "__main__":
-    test_convertor()
+    test_onnx_convertor()
+    test_tflite_convertor()

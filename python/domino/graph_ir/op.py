@@ -13,6 +13,9 @@ __all__ = ["OpName", "all_ops_in" "NamedOp", "ConvOp", "ActivationAttr"]
 
 
 class OpName(object):
+    class PlaceholderOp(enum.Enum):
+        PatternPlaceholder = "PatternPlaceholder"
+
     class ConvOp(enum.Enum):
         Conv2d = "Conv2d"
         Conv2dBias = "Conv2dBias"
@@ -85,6 +88,10 @@ class OpName(object):
 
     class SparseOp(enum.Enum):
         Gather = "Gather"
+        
+    class FusedOp(enum.Enum):
+        InvertedBottleneck = "InvertedBottleneck"
+        ResiInvertedBottleneck = "ResiInvertedBottleneck"
 
     @classmethod
     def elementwise_to_tensor_scalar_op(cls, org_name: ElementwiseOp):
@@ -210,7 +217,6 @@ class NamedOp(OpBase):
 
 GeneralInt = Union[int, ConstInt]
 
-
 class ConvOp(NamedOp):
     def __init__(
         self,
@@ -292,3 +298,111 @@ class ConvOp(NamedOp):
         self.outputs = {
             output_key: output_tensor
         }
+
+
+class PatternOp(object):
+    def __init__(self, name) -> None:
+        self.name = name
+
+class FusionPattern(object):
+    def __init__(self, ops, read_links):
+        assert len(ops)
+        self.ops = ops
+        self.read_links = read_links
+        self.verify()
+        
+    def verify(self):
+        visit = {}
+        def helper(op):
+            nonlocal visit
+            if op in visit:
+                return
+            # this will check loop in network
+            visit[op] = False
+            if op in self.read_links:
+                valid = all([helper(inp) for inp in self.read_links[op]])
+            else:
+                valid = op.name == OpName.PlaceholderOp.PatternPlaceholder
+            visit[op] = valid
+        for name in self.ops:
+            helper(name)
+        assert all(visit.values())
+        
+    def simple_match(self, op: NamedOp):
+        """Simple pattern match
+           Assume only one anchor op (the last op)
+
+        Args:
+            op (NamedOp): the anchor op
+        """
+        frontends = []
+        def helper(cur_op: NamedOp, cur_pattern_op):
+            if cur_pattern_op.name == OpName.PlaceholderOp.PatternPlaceholder:
+                frontends.append(cur_op)
+                return True
+            if cur_op.name != cur_pattern_op.name:
+                return False
+            used = set()
+            mapping = {}
+            for inp in cur_op.inputs.values():
+                if inp.produce_op is None:
+                    continue
+                found = False
+                for op in self.read_links[cur_pattern_op]:
+                    if inp.produce_op.name == op.name and op not in used:
+                        used.add(op)
+                        found = True
+                        mapping[inp.produce_op] = op
+                        break
+                if not found:
+                    return False
+            return all([helper(x, y) for x, y in mapping.items()])
+        match = helper(op, self.ops[-1])
+        return match, frontends
+            
+
+def get_inverted_bottleneck_pattern():
+    placeholder = PatternOp(OpName.PlaceholderOp.PatternPlaceholder)
+    pad1 = PatternOp(OpName.PadOp.Pad)
+    conv1 = PatternOp(OpName.ConvOp.Conv2d)
+    pad2 = PatternOp(OpName.PadOp.Pad)
+    conv2 = PatternOp(OpName.ConvOp.DepthwiseConv2d)
+    pad3 = PatternOp(OpName.PadOp.Pad)
+    conv3 = PatternOp(OpName.ConvOp.Conv2d)
+    op_names = [pad1, conv1, pad2, conv2, pad3, conv3]
+    read_links = {
+        pad1: [placeholder],
+        conv1: [pad1],
+        pad2: [conv1],
+        conv2: [pad2],
+        pad3: [conv2],
+        conv3: [pad3]
+    }
+    return FusionPattern(op_names, read_links)
+
+def get_residual_inverted_bottleneck_pattern():
+    placeholder = PatternOp(OpName.PlaceholderOp.PatternPlaceholder)
+    pad1 = PatternOp(OpName.PadOp.Pad)
+    conv1 = PatternOp(OpName.ConvOp.Conv2d)
+    pad2 = PatternOp(OpName.PadOp.Pad)
+    conv2 = PatternOp(OpName.ConvOp.DepthwiseConv2d)
+    pad3 = PatternOp(OpName.PadOp.Pad)
+    conv3 = PatternOp(OpName.ConvOp.Conv2d)
+    add = PatternOp(OpName.ElementwiseOp.Add)
+    op_names = [pad1, conv1, pad2, conv2, pad3, conv3, add]
+    read_links = {
+        pad1: [placeholder],
+        conv1: [pad1],
+        pad2: [conv1],
+        conv2: [pad2],
+        pad3: [conv2],
+        conv3: [pad3],
+        add: [placeholder, conv3]
+    }
+    return FusionPattern(op_names, read_links)
+
+
+FUSION_PATTERNS = {
+    OpName.FusedOp.InvertedBottleneck: get_inverted_bottleneck_pattern(),
+    OpName.FusedOp.ResiInvertedBottleneck: get_residual_inverted_bottleneck_pattern()
+}

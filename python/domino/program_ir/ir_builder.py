@@ -81,6 +81,9 @@ class IRBuilderContext(object):
             self, shape, scope=scope, dtype=dtype, name=name)
         return alloc_ctx.array
 
+    def attr(self, key: str, var: Var, value: Expr):
+        attr_ctx = AttrBlockContext(self, key, var, value)
+
     def spatial_for(self, names=None, ranges=None, bindings=None):
         for_ctx = ForBlockContext(
             self, IterTypeKind.Spatial, names=names, ranges=ranges, bindings=bindings)
@@ -153,7 +156,8 @@ class IRBuilderContext(object):
         assert self.space.has_subspace(loop.name)
         # subspace = self.space.get_subspace(loop.name)
         # key, value = subspace.get_next(not self.is_tuning_mode)
-        key, value = self.space.get_next_for(loop.name, not self.is_tuning_mode)
+        key, value = self.space.get_next_for(
+            loop.name, not self.is_tuning_mode)
         self.config_key.children[loop.name] = key
         return value
 
@@ -162,7 +166,8 @@ class IRBuilderContext(object):
             return
         plans = generate_fusion_plans(final_tensor, min(2 * levels, 7))
         print(f"Totally {len(plans)} fusion plans")
-        self.space.add_subspace("fuse", CategoricalSpace(plans, policy=CategoricalRandomPolicy()))
+        self.space.add_subspace("fuse", CategoricalSpace(
+            plans, policy=CategoricalRandomPolicy()))
 
     def get_fuse(self):
         # key, value = self.space.get_subspace("fuse").get_next(not self.is_tuning_mode)
@@ -386,6 +391,18 @@ class IRBuilderContext(object):
             cur.ctx.array.var, cur.ctx.array.shape, cur.ctx.array.scope, body)
         return body
 
+    def build_on_attr_block(self, sub_trees, cur):
+        if len(sub_trees) > 0:
+            body = sub_trees[-1]
+            for i in range(len(sub_trees) - 1):
+                body = SeqBlock(
+                    sub_trees[len(sub_trees) - i - 2], body)
+        else:
+            body = Evaluate(0)
+        body = AttrBlock(
+            cur.ctx.key, cur.ctx.var, cur.ctx.value, body)
+        return body
+
     def build_on_stmt_block(self, sub_trees, cur):
         assert len(sub_trees) == 0
         if self.lower_to_tiles:
@@ -443,6 +460,8 @@ class IRBuilderContext(object):
                 return self.build_on_scope_block(sub_trees, cur)
             elif isinstance(cur.ctx, AllocBlockContext):
                 return self.build_on_alloc_block(sub_trees, cur)
+            elif isinstance(cur.ctx, AttrBlockContext):
+                return self.build_on_attr_block(sub_trees, cur)
             elif isinstance(cur.ctx, StmtBlockContext):
                 return self.build_on_stmt_block(sub_trees, cur)
             elif isinstance(cur.ctx, ReMapBlockContext):

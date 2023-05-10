@@ -1327,7 +1327,7 @@ CONVERT_MAP = {
 
 
 class ONNXConvertor(object):
-    def __init__(self, path, inference=True):
+    def __init__(self, path = None, inference=True):
         self.path = path
         self.inference = inference
 
@@ -1346,7 +1346,10 @@ class ONNXConvertor(object):
         assert not self.has_tensor(name), f"Duplicated tensor {name}"
         self._tensors[name] = t
 
-    def parse(self):
+    def parse(self, path = None):
+        if path is not None:
+            self.path = path
+        assert self.path is not None, "Can't parse None model path."
         model = onnx.load_model(self.path)
         onnx.checker.check_model(model)
 

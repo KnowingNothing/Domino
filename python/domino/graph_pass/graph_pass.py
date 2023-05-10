@@ -1,5 +1,5 @@
-from cmath import isfinite
 from typing import Dict, Any, List, Set, Optional, Union
+import networkx as nx
 
 from ..base import PassBase
 from ..graph_ir.op_base import OpBase
@@ -89,7 +89,8 @@ class GraphVisitor(PassBase):
                 self.visit_subgraph(subgraph)
 
     def __call__(self, graph: Graph, specify_subgraphs: Optional[Union[Set[str], List[str]]] = None, init_state=True) -> Any:
-        self.visit_graph(graph, specify_subgraphs=specify_subgraphs, init_state=init_state)
+        self.visit_graph(
+            graph, specify_subgraphs=specify_subgraphs, init_state=init_state)
 
 
 class GraphMutator(PassBase):

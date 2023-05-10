@@ -27,3 +27,9 @@ using namespace domino;
 //   EXPECT_EQ(repr(load), std::string("a[1, x]"));
 // }
 
+TEST(test_ir_repr, load_expr) {
+  auto v = Var::make(DType::make("int32"), ConstString::make("a"));
+  auto b = FloorDiv::make(v, v);
+  EXPECT_EQ(repr(b), std::string("(a // a)"));
+}
+

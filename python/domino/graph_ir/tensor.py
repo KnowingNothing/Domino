@@ -49,6 +49,7 @@ class Tensor(IRBase):
 
     @property
     def shape_dict(self):
+        assert self.layout is not None, "Can't get shape dict for None layout."
         return {l: s for s, l in zip(self.shape, self.layout)}
 
     def __str__(self) -> str:

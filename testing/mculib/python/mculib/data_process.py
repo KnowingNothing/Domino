@@ -18,5 +18,9 @@ def alloc_register_array(ctx, shape, dtype, name, init_value):
     return helper(shape, name)
 
 
+def declare_register(ctx, dtype, name, init_value):
+    return ctx.map_var(f"{name}", make_const(init_value, dtype))
+
+
 def vload_to_register_array(ctx, name, array, length):
     return [ctx.map_var(f"{name}_{i}", array[i]) for i in range(length)]
