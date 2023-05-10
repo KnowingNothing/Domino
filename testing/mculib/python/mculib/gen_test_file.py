@@ -166,12 +166,20 @@ return 0;
 """
 
 
-def gen_ring_buffer_test_file(kernel_to_test, kernel_golden, input_tensors, input_tensors_offsets, input_vars, concrete_vars, ring_buffer_byte_size, need_debug=True):
+def gen_ring_buffer_test_file(
+        kernel_to_test,
+        kernel_golden,
+        input_tensors,
+        input_tensors_offsets,
+        input_vars,
+        concrete_vars,
+        ring_buffer_byte_size,
+        need_debug=True):
     header = gen_mculib_header()
     left = "{"
     right = "}"
     endl = "\\n"
-    
+
     ring_buffer_decls = f"unsigned char __RING_BUF__[{ring_buffer_byte_size}];\nunsigned long long __RING_BUF_SIZE__ = {ring_buffer_byte_size};\nunsigned char* __RING_BUF_END__ = __RING_BUF__ + {ring_buffer_byte_size};\n"
 
     assert len(input_vars) == len(
@@ -221,7 +229,8 @@ def gen_ring_buffer_test_file(kernel_to_test, kernel_golden, input_tensors, inpu
                 f"const {t.dtype} {t.name}_debug[{length}] = " + "{" + f"{init_values}" + "};\n")
         else:
             # define_arrays.append(f"{t.dtype} {t.name}[{length}] = " + "{0};\n")
-            define_arrays.append(f"{t.dtype}* {t.name} = reinterpret_cast<{t.dtype}*>(__RING_BUF__ + {offset});\n")
+            define_arrays.append(
+                f"{t.dtype}* {t.name} = reinterpret_cast<{t.dtype}*>(__RING_BUF__ + {offset});\n")
             define_debug_arrays.append(
                 f"{t.dtype} {t.name}_debug[{length}] = " + "{0};\n")
 
@@ -234,7 +243,7 @@ for (int _i = 0; _i < {length}; ++_i) {left}
 #endif
 {right}\n
 """
-        if not t.is_const() else "" for t, length in zip(input_tensors, lengths)]
+        if not t.is_const() and t.init is None else "" for t, length in zip(input_tensors, lengths)]
 
     check_arrays = [
         f"""
@@ -243,7 +252,7 @@ for (int _i = 0; _i < {length}; ++_i) {left}
         _errors += 1;
 {right}\n
 """
-        if not t.is_const() else "" for t, length in zip(input_tensors, lengths)]
+        if not t.is_const() and t.init is not None else "" for t, length in zip(input_tensors, lengths)]
 
     return f"""
 {header}
