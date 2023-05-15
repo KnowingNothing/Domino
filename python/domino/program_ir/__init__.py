@@ -1,6 +1,7 @@
 from .arch import *
 from .dsl import *
 from .functional import *
+from .inferbound import *
 from .ir_builder import *
 from .scalar_expr import *
 from .simplify import *

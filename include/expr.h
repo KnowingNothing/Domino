@@ -821,6 +821,8 @@ class VarNode : public MutableExprNode {
     return fmt::format("Var({}, {})", std::string(this->id), std::string(this->dtype));
   }
 
+  std::string getID() { return std::string(id); }
+
   ConstString id;
 };
 
@@ -868,6 +870,8 @@ class IteratorNode : public ExprNode {
     return fmt::format("Iter({}, {}, {})", std::string(this->var), std::string(this->range),
                        iter_type_to_string(this->iter_type));
   }
+
+  std::string getID() { return std::string(var->id); }
 
   Var var;
   Range range;

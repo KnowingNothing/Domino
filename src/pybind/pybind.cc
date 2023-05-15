@@ -11,8 +11,10 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <ref.h>
+#include <right_thread.h>
 #include <simplify.h>
 #include <stmt.h>
+#include <transform.h>
 #include <type_system/dtype.h>
 
 PYBIND11_DECLARE_HOLDER_TYPE(T, domino::Ref<T>);
@@ -519,6 +521,69 @@ void bindIR(py::module_& m) {
 
   /// bind replicate
   ir_m.def("replicate", &replicate, "Replicate an IR exactly.");
+
+  // bind CoefNumNode Class
+  py::class_<CoefNumNode, CoefNum> pyCoefNum(ir_m, "CoefNum", pyIRBase);
+  pyCoefNum.def(py::init<long long int>())
+      .def(py::init<CoefNum>())
+      .def("__repr__", [](const CoefNumNode& d) { return std::string(d); })
+      .def("__str__", [](const CoefNumNode& d) { return std::string(d); })
+      .def_readwrite("value", &CoefNumNode::value)
+      .def("negate", &CoefNumNode::negate);
+
+  // bind Stype Enum
+  py::enum_<Stype>(ir_m, "Stype")
+      .value("SET_CONST", Stype::SET_CONST)
+      .value("SET_VAR", Stype::SET_VAR);
+
+  // bind SetGeneralNode Class
+  py::class_<SetGeneralNode, SetGeneral> pySetGeneral(ir_m, "SetGeneral", pyIRBase);
+  pySetGeneral.def(py::init<Stype>())
+      .def("__repr__", [](const SetGeneralNode& d) { return std::string(d); })
+      .def("__str__", [](const SetGeneralNode& d) { return std::string(d); });
+
+  // bind SetConstNode Class
+  py::class_<SetConstNode, SetConst> pySetConst(ir_m, "SetConst", pySetGeneral);
+  pySetConst.def(py::init<>())
+      .def(py::init<long long int>())
+      .def(py::init<ConstInt>())
+      .def(py::init<Iterator>())
+      .def(py::init<SetConst>())
+      .def("__repr__", [](const SetConstNode& d) { return std::string(d); })
+      .def("__str__", [](const SetConstNode& d) { return std::string(d); })
+      .def_readwrite("cons_int", &SetConstNode::cons_int)
+      .def_readwrite("ts", &SetConstNode::ts)
+      .def("negate", &SetConstNode::negate);
+
+  // bind SetVarNode Class
+  py::class_<SetVarNode, SetVar> pySetVar(ir_m, "SetVar", pySetGeneral);
+  pySetVar.def(py::init<Var>())
+      .def("__repr__", [](const SetVarNode& d) { return std::string(d); })
+      .def("__str__", [](const SetVarNode& d) { return std::string(d); })
+      .def_readwrite("cons_set", &SetVarNode::cons_set)
+      .def_readwrite("ts", &SetVarNode::ts)
+      .def("negate", &SetVarNode::negate);
+
+  // bind InferBound Function
+  ir_m.def("InferBound", &InferBound, "The main function transforming Expr to Range");
+
+  // bind Set_Const/Var_Add/Mul Function
+  ir_m.def("SetConstAdd", &SetConstAdd, "Add 2 SetConst");
+  ir_m.def("SetVarAdd", &SetVarAdd, "Add 2 SetVar");
+  ir_m.def("SetConstMul", &SetConstMul, "Multiply 2 SetConst");
+  ir_m.def("SetVarMul", &SetVarMul, "Multiply 2 SetVar");
+
+  // bind HandleSetConst/Var Function
+  ir_m.def("HandleSetConst", &HandleSetConst, "Substitute Iterator with Range in SetConst");
+  ir_m.def("HandleSetVar", &HandleSetVar, "Substitute Iterator with Range in SetVar");
+
+  // bind compute_range/expr Function
+  ir_m.def("compute_expr", &compute_expr,
+           "Compute the value of Expr, the reason why put here is to prevent exposing so many "
+           "properties in python");
+  ir_m.def("compute_range", &compute_range,
+           "Compute the beg/extent of Range, the reason why put here is to prevent exposing so "
+           "many properties in python");
 }
 
 void bindCodeGen(py::module_& m) {
