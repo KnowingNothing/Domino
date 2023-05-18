@@ -566,6 +566,7 @@ void bindIR(py::module_& m) {
 
   // bind InferBound Function
   ir_m.def("InferBound", &InferBound, "The main function transforming Expr to Range");
+  ir_m.def("TransformFirst", &TransformFirst, "The first step: transforming Expr to SetGeneral");
 
   // bind Set_Const/Var_Add/Mul Function
   ir_m.def("SetConstAdd", &SetConstAdd, "Add 2 SetConst");

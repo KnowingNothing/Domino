@@ -2,6 +2,7 @@
 #include <right_thread.h>
 #include <transform.h>
 
+#include <algorithm>
 #include <unordered_map>
 
 namespace domino {
@@ -45,6 +46,25 @@ SetGeneral SetVarMul(SetGeneral lhs, SetGeneral rhs) {
   return a;
 }
 
+long long int ConstIntToValue(Expr e) {
+  ASSERT(e.as<ConstIntNode>().defined());
+  return (e.as<ConstIntNode>())->value;
+}
+
+Range range_div(Range divisor, Range dividend) {
+  auto dividend_lower = ConstIntToValue(dividend->beg);
+  auto dividend_upper = ConstIntToValue(dividend->extent) + dividend_lower - 1;
+  ASSERT(dividend_upper >= dividend_lower);
+  if (dividend_lower <= 0 && dividend_upper >= 0)
+    throw std::runtime_error("The range of dividend includes 0!");
+  auto divisor_lower = ConstIntToValue(divisor->beg);
+  auto divisor_upper = ConstIntToValue(divisor->extent) + divisor_lower - 1;
+  auto candidate = {divisor_lower / dividend_lower, divisor_lower / dividend_upper,
+                    divisor_upper / dividend_lower, divisor_upper / dividend_upper};
+  long long int beg = std::min(candidate), end = std::max(candidate);
+  return Range::make(const_int(beg), const_int(end - beg + 1), const_int(1));
+}
+
 // Range: beg, extent, step
 // TermSet<CoefNum, Iterator>
 // T1 coef
@@ -63,13 +83,12 @@ Range HandleSetConst(SetConst sc) {
     long long int term_beg = 1, term_end = 1;
     for (int j = 0; j < p[i].element.size(); ++j) {
       Iterator it = p[i].element[j];
-      ASSERT((it->range->beg).as<ConstIntNode>().defined() &&
-             (it->range->extent).as<ConstIntNode>().defined());
-      long long int tmp_beg = ((it->range->beg).as<ConstIntNode>())->value;
-      ASSERT(tmp_beg >= 0);
-      long long int tmp_end = ((it->range->extent).as<ConstIntNode>())->value + tmp_beg - 1;
-      term_beg *= tmp_beg;
-      term_end *= tmp_end;
+      auto tmp_beg = ConstIntToValue(it->range->beg);
+      auto tmp_end = ConstIntToValue(it->range->extent) + tmp_beg - 1;
+      auto candidate = {term_beg * tmp_beg, term_beg * tmp_end, term_end * tmp_beg,
+                        term_end * tmp_end};
+      term_beg = std::min(candidate);
+      term_end = std::max(candidate);
     }
 
     // 判断p[i].coef正负并乘上叠加到前一项上
@@ -84,11 +103,6 @@ Range HandleSetConst(SetConst sc) {
   }
   ASSERT(end >= beg);
   return Range::make(const_int(beg), const_int(end - beg + 1), const_int(1));
-}
-
-long long int ConstIntToValue(Expr e) {
-  ASSERT(e.as<ConstIntNode>().defined());
-  return (e.as<ConstIntNode>())->value;
 }
 
 // 假设Var全部都非负
@@ -145,9 +159,14 @@ Range HandleSetVar(SetVar sv) {
   return res;
 }
 
-Range InferBound(Expr expr) {
+SetGeneral TransformFirst(Expr expr) {
   ExprTransformer trans;
-  SetGeneral simplified = trans.Visit(expr);
+  trans.iterator_name = 0;
+  return trans.Visit(expr);
+}
+
+Range InferBound(Expr expr) {
+  SetGeneral simplified = TransformFirst(expr);
 
   // 最后代入所有的iteration
   if (simplified->stype == SET_CONST)
@@ -168,8 +187,10 @@ long long int compute_expr(Expr expr, std::unordered_map<std::string, long long 
     return compute_expr(expr.as<SubNode>()->a, umap) - compute_expr(expr.as<SubNode>()->b, umap);
   if (expr.as<MulNode>().defined())
     return compute_expr(expr.as<MulNode>()->a, umap) * compute_expr(expr.as<MulNode>()->b, umap);
-  ASSERT(expr.as<NegNode>().defined());
-  return -compute_expr(expr.as<NegNode>()->a, umap);
+  if (expr.as<NegNode>().defined()) return -compute_expr(expr.as<NegNode>()->a, umap);
+  ASSERT(expr.as<FloorDivNode>().defined());
+  return compute_expr(expr.as<FloorDivNode>()->a, umap) /
+         compute_expr(expr.as<FloorDivNode>()->b, umap);
 }
 
 long long int compute_range(Range range, std::unordered_map<std::string, long long int>* umap,

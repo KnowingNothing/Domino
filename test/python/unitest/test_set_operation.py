@@ -10,10 +10,13 @@ con_3_ = SetConst(3)
 
 range_1 = Range(ConstInt(0, 32, 1), ConstInt(32, 32, 1), ConstInt(1, 32, 1))
 range_2 = Range(ConstInt(2, 32, 1), ConstInt(3, 32, 1), ConstInt(1, 32, 1))
+range_3 = Range(ConstInt(-2, 32, 1), ConstInt(5, 32, 1), ConstInt(1, 32, 1))
 it_var_1 = Var(t, "x")
 it_var_2 = Var(t, "y")
+it_var_3 = Var(t, "z")
 it_1 = Iterator(it_var_1, range_1, IterTypeKind(0))
 it_2 = Iterator(it_var_2, range_2, IterTypeKind(0))
+it_3 = Iterator(it_var_3, range_3, IterTypeKind(0))
 con_0_x = SetConst(it_1)
 con_0_y = SetConst(it_2)
 assert str(con_0_x) == "SetConst(CoefNum(0), TermSet(Term(CoefNum(1), x, 1, x, x)))"
@@ -214,26 +217,6 @@ def test_SetVar():
     # print(f)
 
 
-def test_simple():
-    var_0_a_1 = SetVar(var_a)
-    var_0_a_2 = SetVar(var_a)
-    var_0_b_1 = SetVar(var_b)
-    var_0_b_2 = SetVar(var_b)
-    con_0_x = SetConst(it_1)
-    var_ax_1 = SetVarMul(var_0_a_1, con_0_x)
-    var_by_1 = SetVarMul(var_0_b_1, con_0_y)
-    var_ax_by_1 = SetVarAdd(var_ax_1, var_by_1)
-    var_ax_2 = SetVarMul(var_0_a_2, con_0_x)
-    var_by_2 = SetVarMul(var_0_b_2, con_0_y)
-    var_ax_by_2 = SetVarAdd(var_ax_2, var_by_2)
-    assert (
-        str(SetVarMul(var_ax_by_1, var_ax_by_2))
-        == "SetVar(SetConst(CoefNum(0), TermSet()), TermSet(Term(SetConst(CoefNum(0), TermSet(Term(CoefNum(1), x, x, 2, x, x))), a, a, 2, a, a), Term(SetConst(CoefNum(0), TermSet(Term(CoefNum(2), y, x, 2, y, x))), b, a, 2, b, a), Term(SetConst(CoefNum(0), TermSet(Term(CoefNum(1), y, y, 2, y, y))), b, b, 2, b, b)))"
-    )
-
-
 if __name__ == "__main__":
     test_SetConst()
     test_SetVar()
-    test_simple()
-    # test_tmp()

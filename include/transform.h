@@ -10,12 +10,17 @@
 namespace domino {
 
 Range InferBound(Expr expr);  // 总入口函数
+SetGeneral TransformFirst(Expr expr);
+
 SetGeneral SetConstAdd(SetGeneral a, SetGeneral b);
 SetGeneral SetVarAdd(SetGeneral a, SetGeneral b);
 SetGeneral SetConstMul(SetGeneral a, SetGeneral b);
 SetGeneral SetVarMul(SetGeneral a, SetGeneral b);
+
 Range HandleSetConst(SetConst sc);
 Range HandleSetVar(SetVar sv);
+Range range_div(Range divisor, Range dividend);
+
 long long int compute_expr(Expr expr, std::unordered_map<std::string, long long int>* umap);
 long long int compute_range(Range range, std::unordered_map<std::string, long long int>* umap,
                             int n);
@@ -60,6 +65,21 @@ class ExprTransformer : public IRFunctor<SetGeneral()> {
     if (lhs->stype == SET_CONST && rhs->stype == SET_CONST) return SetConstMul(lhs, rhs);
     if (lhs->stype == SET_VAR) return SetVarMul(lhs, rhs);
     return SetVarMul(rhs, lhs);
+  }
+
+  int iterator_name;
+  SetGeneral ImplVisit(FloorDiv op) override {
+    auto lhs = Visit(op->a), rhs = Visit(op->b);
+    // 分子和分母禁止出现variable
+    // 分子可以是任意范围，但分母不可以有0的可能性
+    ASSERT(lhs->stype == SET_CONST && rhs->stype == SET_CONST);
+    Range res =
+        range_div(HandleSetConst(lhs.as<SetConstNode>()), HandleSetConst(rhs.as<SetConstNode>()));
+    DType t = DType::make("ignore");
+    Iterator it =
+        Iterator::make(Var::make(t, " " + std::to_string(iterator_name)), res, IterTypeKind(0));
+    iterator_name++;
+    return SetConst::make(it);
   }
 };
 
