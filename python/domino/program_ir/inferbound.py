@@ -45,6 +45,9 @@ class SetConst(ir.SetConst, SetGeneral):
 
     def negate(self):
         ir.SetConst.negate(self)
+        
+    def elementNum(self):
+        ir.SetConst.elementNum(self)
 
 
 class SetVar(ir.SetVar, SetGeneral):
@@ -54,3 +57,6 @@ class SetVar(ir.SetVar, SetGeneral):
 
     def negate(self):
         ir.SetVar.negate(self)
+        
+    def elementNum(self):
+        ir.SetVar.elementNum(self)

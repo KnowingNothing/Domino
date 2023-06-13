@@ -83,6 +83,44 @@ class ExprTransformer : public IRFunctor<SetGeneral()> {
   }
 };
 
+int compute_op(Expr expr) {
+  if (expr.as<AddNode>().defined())
+    return 1 + compute_op(expr.as<AddNode>()->a) + compute_op(expr.as<AddNode>()->b);
+  if (expr.as<SubNode>().defined())
+    return 1 + compute_op(expr.as<SubNode>()->a) + compute_op(expr.as<SubNode>()->b);
+  if (expr.as<MulNode>().defined())
+    return 1 + compute_op(expr.as<MulNode>()->a) + compute_op(expr.as<MulNode>()->b);
+  if (expr.as<NegNode>().defined()) return 1 + compute_op(expr.as<NegNode>()->a);
+  if (expr.as<FloorDivNode>().defined())
+    return 1 + compute_op(expr.as<FloorDivNode>()->a) + compute_op(expr.as<FloorDivNode>()->b);
+  return 0;
+}
+
+int compute_leaf(Expr expr) {
+  if (expr.as<ConstIntNode>().defined()) return 1;
+  if (expr.as<IteratorNode>().defined()) return 1;
+  if (expr.as<VarNode>().defined()) return 1;
+  if (expr.as<AddNode>().defined())
+    return compute_leaf(expr.as<AddNode>()->a) + compute_leaf(expr.as<AddNode>()->b);
+  if (expr.as<SubNode>().defined())
+    return compute_leaf(expr.as<SubNode>()->a) + compute_leaf(expr.as<SubNode>()->b);
+  if (expr.as<MulNode>().defined())
+    return compute_leaf(expr.as<MulNode>()->a) + compute_leaf(expr.as<MulNode>()->b);
+  if (expr.as<NegNode>().defined()) return compute_leaf(expr.as<NegNode>()->a);
+  ASSERT(expr.as<FloorDivNode>().defined());
+  return compute_leaf(expr.as<FloorDivNode>()->a) + compute_leaf(expr.as<FloorDivNode>()->b);
+}
+
+int compute_op_range(Range range, int n) {
+  if (n == 0) return compute_op(range->beg);
+  return compute_op(range->extent);
+}
+
+int compute_leaf_range(Range range, int n) {
+  if (n == 0) return compute_leaf(range->beg);
+  return compute_leaf(range->extent);
+}
+
 }  // namespace domino
 
 #endif  // DOMINO_SIMPLIFY_H

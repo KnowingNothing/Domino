@@ -70,6 +70,11 @@ class Term {
 
   bool operator<(const Term<T1, T2>& obj) { return feat.num < obj.feat.num; }
 
+  int elementNum() {
+    if (coef->ifOne()) return element.size();
+    return 1 + element.size();
+  }
+
   operator std::string() const {
     std::vector<std::string> strs;
     strs.push_back(std::string(coef));
@@ -192,6 +197,12 @@ class TermSet {
 
   bool ifZero() { return terms.size() == 0; }
 
+  int elementNum() {
+    int res = 0;
+    for (int i = 0; i < terms.size(); ++i) res += terms[i].elementNum();
+    return res;
+  }
+
   operator std::string() const {
     std::vector<std::string> strs;
     for (auto v : this->terms) {
@@ -216,6 +227,13 @@ class CoefNumNode : public IRBaseNode {
   void negate() { value *= -1; }
 
   bool ifZero() { return value == 0; }
+
+  bool ifOne() { return (value == 1 || value == -1); }
+
+  int elementNum() {
+    if (value == 0) return 0;
+    return 1;
+  }
 
   operator std::string() const override { return fmt::format("CoefNum({})", value); }
 };
@@ -272,6 +290,10 @@ class SetConstNode : public SetGeneralNode {
 
   bool ifNumber() { return ts.ifZero(); }
 
+  bool ifOne() { return (cons_int->ifOne() && ts.ifZero()); }
+
+  int elementNum() { return cons_int->elementNum() + ts.elementNum(); }
+
   operator std::string() const override {
     return fmt::format("SetConst({}, {})", std::string(cons_int), std::string(ts));
   }
@@ -309,6 +331,8 @@ class SetVarNode : public SetGeneralNode {
   }
 
   bool ifConst() { return ts.ifZero(); }
+
+  int elementNum() { return cons_set->elementNum() + ts.elementNum(); }
 
   operator std::string() const override {
     return fmt::format("SetVar({}, {})", std::string(cons_set), std::string(ts));

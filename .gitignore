@@ -252,3 +252,7 @@ conda/pkg
 total_latency.tsv
 maestro
 timeloop
+
+test/python/unitest/performance_test.py
+test/python/unitest/test_cnn.py
+test/python/unitest/pytorch.py

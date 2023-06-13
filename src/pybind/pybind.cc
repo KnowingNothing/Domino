@@ -553,7 +553,8 @@ void bindIR(py::module_& m) {
       .def("__str__", [](const SetConstNode& d) { return std::string(d); })
       .def_readwrite("cons_int", &SetConstNode::cons_int)
       .def_readwrite("ts", &SetConstNode::ts)
-      .def("negate", &SetConstNode::negate);
+      .def("negate", &SetConstNode::negate)
+      .def("elementNum", &SetConstNode::elementNum);
 
   // bind SetVarNode Class
   py::class_<SetVarNode, SetVar> pySetVar(ir_m, "SetVar", pySetGeneral);
@@ -562,7 +563,8 @@ void bindIR(py::module_& m) {
       .def("__str__", [](const SetVarNode& d) { return std::string(d); })
       .def_readwrite("cons_set", &SetVarNode::cons_set)
       .def_readwrite("ts", &SetVarNode::ts)
-      .def("negate", &SetVarNode::negate);
+      .def("negate", &SetVarNode::negate)
+      .def("elementNum", &SetVarNode::elementNum);
 
   // bind InferBound Function
   ir_m.def("InferBound", &InferBound, "The main function transforming Expr to Range");
@@ -585,6 +587,10 @@ void bindIR(py::module_& m) {
   ir_m.def("compute_range", &compute_range,
            "Compute the beg/extent of Range, the reason why put here is to prevent exposing so "
            "many properties in python");
+  ir_m.def("compute_leaf", &compute_leaf, "for performance");
+  ir_m.def("compute_op", &compute_op, "for performance");
+  ir_m.def("compute_leaf_range", &compute_leaf_range, "for performance");
+  ir_m.def("compute_op_range", &compute_op_range, "for performance");
 }
 
 void bindCodeGen(py::module_& m) {

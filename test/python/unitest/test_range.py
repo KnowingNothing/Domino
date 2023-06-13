@@ -95,16 +95,16 @@ import math
 from itertools import product
 
 DividendList = [con_1, con_n1, con_2, con_n3, it_y, Add(con_0, con_3), Add(con_n2, con_3), Add(con_2, it_x), Add(con_3, it_z0), Add(it_y, it_x), Add(Add(it_y, it_z0), con_1), Sub(con_0, con_3), Sub(it_z0, con_3), Add(Sub(Neg(it_x), con_3), it_z0)]
-DivisorList = [con_0, con_1, con_n1, con_n2, con_3, it_x, it_y, it_z0]
+DivisorList = [con_0, con_1, con_n2, con_3, it_x, it_y, it_z0]
 LeafList = [con_0, con_1, con_n1, con_n2, con_3, it_x, it_y, it_z0, var_a, var_b, var_c0]
-MaxHeight = 50
-OpDivident = 1 / 5
+MaxHeight = 5
+OpDivident = 9 / 5
 
 def generate_expr_tree(height, NowList):
     NowDivident = 1 / len(NowList)
     if height > MaxHeight:
         return random.choice(NowList)
-    rand_num = random.random() * 2
+    rand_num = random.random() * 10
     if rand_num < 1:
         return NowList[math.floor(rand_num / NowDivident)]
     Op = math.floor((rand_num - 1) / OpDivident)
@@ -156,6 +156,6 @@ if __name__ == "__main__":
     # 由于允许Iterator的范围从负开始的功能为新加的，未单独写单元检测，但是test_Total中构造了range_z0，总体检测了其正确性
     # 连带着测transform.h
     
-    for t in range(500):
+    for t in range(1000):
         random.seed(time.time())
         test_Total()
