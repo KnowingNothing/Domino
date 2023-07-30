@@ -281,7 +281,7 @@ def conv3x3_conv_nchw_dataflow_3levels(ctx, tI, tW1, tW2, batch, height, width, 
     return [tB], [b, h, w, c, l, k, r, s, u, v]
 
 
-def get_tangram_dataflow(levels, batch, height, width, in_channel, out_channel_1, out_channel_2, define_tiling_space=True, layout="nhwc", second_kernel_size=3):
+def get_tileflow_dataflow(levels, batch, height, width, in_channel, out_channel_1, out_channel_2, define_tiling_space=True, layout="nhwc", second_kernel_size=3):
     def static_func(ctx):
         # use NameScope to allow the same name for different plan
         with dir.NameScope(only_capital=True):

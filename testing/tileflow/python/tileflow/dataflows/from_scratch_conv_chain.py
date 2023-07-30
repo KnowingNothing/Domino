@@ -156,7 +156,7 @@ def conv_chain_nchw_dataflow(ctx, tI, tW1, tW2, batch, height, width, in_channel
     return [tB], [b, h, w, c, l, k, r, s, u, v]
 
 
-def get_tileflow_conv_chain_dataflow(levels, batch, height, width, in_channel, out_channel_1, out_channel_2, define_tiling_space=True, layout="nhwc", second_kernel_size=3):
+def get_from_scratch_conv_chain_dataflow(levels, batch, height, width, in_channel, out_channel_1, out_channel_2, define_tiling_space=True, layout="nhwc", second_kernel_size=3):
     def static_func(ctx):
         # use NameScope to allow the same name for different plan
         with dir.NameScope(only_capital=True):

@@ -46,10 +46,10 @@ def gemm_exp_gemm_compute(ctx, tA, tB, tE, M, N, K, L, levels):
     m, n = [dir.Loop(x, name=y) for (x, y) in zip([M, N], "MN")]
     k, l = [dir.Loop(x, name=y) for (x, y) in zip([K, L], "KL")]
 
-    ctx.define_split(m, nparts=2*levels)
-    ctx.define_split(n, nparts=2*levels)
-    ctx.define_split(k, nparts=2*levels)
-    ctx.define_split(l, nparts=2*levels)
+    ctx.define_split(m, nparts=2*levels + 1)
+    ctx.define_split(n, nparts=2*levels + 1)
+    ctx.define_split(k, nparts=2*levels + 1)
+    ctx.define_split(l, nparts=2*levels + 1)
     factors_m = ctx.get_split(m)
     factors_n = ctx.get_split(n)
     factors_k = ctx.get_split(k)

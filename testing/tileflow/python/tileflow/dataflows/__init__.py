@@ -2,12 +2,12 @@ from .flat_rgran import get_flat_rgran_dataflow
 from .flat_hgran import get_flat_hgran_dataflow
 from .flat_bgran import get_flat_bgran_dataflow
 from .flat_mgran import get_flat_mgran_dataflow
-from .tileflow_self_attention import get_tileflow_self_attention_dataflow
+from .from_scratch_self_attention import get_from_scratch_self_attention_dataflow
 from .chimera_self_attention import get_chimera_self_attention_dataflow
-from .self_attention_full_fuse import get_self_attention_full_fuse_dataflow
+from .tileflow_self_attention import get_tileflow_self_attention_dataflow
 from .self_attention_no_fuse import get_self_attention_no_fuse_dataflow
 from .fused_layer_dataflow import get_fused_layer_dataflow
 from .isos_dataflow import get_isos_dataflow
-from .tangram_dataflow import get_tangram_dataflow
+from .tileflow_conv_dataflow import get_tileflow_dataflow
 from .conv_chain_no_fuse import get_conv_chain_no_fuse_dataflow
-from .tileflow_conv_chain import get_tileflow_conv_chain_dataflow
+from .from_scratch_conv_chain import get_from_scratch_conv_chain_dataflow

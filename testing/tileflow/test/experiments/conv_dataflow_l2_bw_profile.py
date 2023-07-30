@@ -12,7 +12,7 @@ def run(dataflow_name, levels, hw_config, batch, height, width, in_channel, out_
     table = {
         "fused_layer": td.get_fused_layer_dataflow,
         "isos": td.get_isos_dataflow,
-        "tangram": td.get_tangram_dataflow,
+        "tileflow": td.get_tileflow_dataflow,
         "no_fuse": td.get_conv_chain_no_fuse_dataflow
     }
     dataflow = table[dataflow_name](
@@ -31,7 +31,7 @@ def replay(dataflow_name, l1_bw, l2_bw, logfile, hw_id, batch, height, width, in
     table = {
         "fused_layer": td.get_fused_layer_dataflow,
         "isos": td.get_isos_dataflow,
-        "tangram": td.get_tangram_dataflow,
+        "tileflow": td.get_tileflow_dataflow,
         "no_fuse": td.get_conv_chain_no_fuse_dataflow
     }
     dataflow = table[dataflow_name](
@@ -71,7 +71,7 @@ def replay_config(dataflow_name, l1_bw, l2_bw, config, hw_id, batch, height, wid
     table = {
         "fused_layer": td.get_fused_layer_dataflow,
         "isos": td.get_isos_dataflow,
-        "tangram": td.get_tangram_dataflow,
+        "tileflow": td.get_tileflow_dataflow,
         "no_fuse": td.get_conv_chain_no_fuse_dataflow
     }
     dataflow = table[dataflow_name](

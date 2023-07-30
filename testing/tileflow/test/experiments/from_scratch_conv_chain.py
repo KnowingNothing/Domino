@@ -9,7 +9,7 @@ import json
 
 
 def run(levels, hw_config, batch, height, width, in_channel, out_channel_1, out_channel_2, trials, metric_type, debug=False, resource_check=True, define_tiling_space=False, layout="nhwc"):
-    dataflow = td.get_tangram_dataflow(
+    dataflow = td.get_from_scratch_conv_chain_dataflow(
         levels, batch, height, width, in_channel, out_channel_1, out_channel_2, define_tiling_space=define_tiling_space, layout=layout)
 
     best_perf, best_config_key, best_config = tuning(
@@ -22,7 +22,7 @@ def replay(logfile, hw_id, batch, height, width, in_channel, out_channel_1, out_
     levels = hw[hw_id][0]
     hw_config = acc.tileflow_accelerator_generator(
         hw[hw_id][1])
-    dataflow = td.get_tangram_dataflow(
+    dataflow = td.get_from_scratch_conv_chain_dataflow(
         levels, batch, height, width, in_channel, out_channel_1, out_channel_2, define_tiling_space=define_tiling_space, layout=layout, second_kernel_size=second_kernel_size)
 
     with open(logfile, "r") as fin:
@@ -56,7 +56,7 @@ def replay_config(config, hw_id, batch, height, width, in_channel, out_channel_1
     levels = hw[hw_id][0]
     hw_config = acc.tileflow_accelerator_generator(
         hw[hw_id][1])
-    dataflow = td.get_tangram_dataflow(
+    dataflow = td.get_from_scratch_conv_chain_dataflow(
         levels, batch, height, width, in_channel, out_channel_1, out_channel_2, define_tiling_space=define_tiling_space, layout=layout, second_kernel_size=second_kernel_size)
     print(config)
     perf, _, _ = inference(hw_config, dataflow, [],
@@ -78,7 +78,7 @@ shapes = [
 
 
 """example
-python tangram_dataflow.py --metric=1e9/latency --trials 1 |& tee trace.log
+python from_scratch_conv_chain.py --metric=1e9/latency --trials 1 |& tee trace.log
 """
 
 
@@ -114,7 +114,6 @@ if __name__ == "__main__":
     trials = args.trials
 
     metric_type = args.metric
-
     if args.inference:
         shape = shapes[args.begin]
         in_channel, height, width, out_channel_1, out_channel_2 = shape
@@ -127,7 +126,6 @@ if __name__ == "__main__":
         print(perf)
 
     else:
-
         results_for_shape = []
         for shape in shapes[args.begin:args.begin+args.number]:
             results = []
