@@ -56,7 +56,7 @@ def conv3x3_conv_dataflow_2levels(ctx, tI, tW1, tW2, batch, height, width, in_ch
             with ctx.tile("L1", [h0, w0, c1, l1], "Temporal"):
                 with ctx.tile("L1", [c0, l0], "Spatial"):
                     with ctx.tile("L0", [r, s], "Temporal"):
-                        tA[b, h, w, l] = tA[b, h, w, l] + \
+                        tA[b, h + u, w + v, l] = tA[b, h + u, w + v, l] + \
                             tI[b, h + r, w + s, c] * tW1[l, r, s, c]
             with ctx.tile("L1", [h0, w0, l1, k1], "Temporal"):
                 with ctx.tile("L1", [l0, k0], "Spatial"):
@@ -124,7 +124,7 @@ def conv3x3_conv_dataflow_3levels(ctx, tI, tW1, tW2, batch, height, width, in_ch
                     with ctx.tile("L1", [h0, w0, c1, l1], "Temporal"):
                         with ctx.tile("L1", [c0, l0], "Spatial"):
                             with ctx.tile("L0", [r, s], "Temporal"):
-                                tA[b, h, w, l] = tA[b, h, w, l] + \
+                                tA[b, h + u, w + v, l] = tA[b, h + u, w + v, l] + \
                                     tI[b, h + r, w + s, c] * tW1[l, r, s, c]
                     with ctx.tile("L1", [h0, w0, l1, k1], "Temporal"):
                         with ctx.tile("L1", [l0, k0], "Spatial"):
@@ -190,7 +190,7 @@ def conv3x3_conv_nchw_dataflow_2levels(ctx, tI, tW1, tW2, batch, height, width, 
             with ctx.tile("L1", [h0, w0, c1, l1], "Temporal"):
                 with ctx.tile("L1", [c0, l0], "Spatial"):
                     with ctx.tile("L0", [r, s], "Temporal"):
-                        tA[b, l, h, w] = tA[b, l, h, w] + \
+                        tA[b, l, h + u, w + v] = tA[b, l, h + u, w + v] + \
                             tI[b, c, h + r, w + s] * tW1[l, c, r, s]
             with ctx.tile("L1", [h0, w0, l1, k1], "Temporal"):
                 with ctx.tile("L1", [l0, k0], "Spatial"):
@@ -257,8 +257,8 @@ def conv3x3_conv_nchw_dataflow_3levels(ctx, tI, tW1, tW2, batch, height, width, 
                 with ctx.tile("L2", [h1, w1], "Spatial"):
                     with ctx.tile("L1", [h0, w0, c1, l1], "Temporal"):
                         with ctx.tile("L1", [c0, l0], "Spatial"):
-                            with ctx.tile("L0", [r, s], "Temporal"):
-                                tA[b, l, h, w] = tA[b, l, h, w] + \
+                            with ctx.tile("L0", [r, s, u, v], "Temporal"):
+                                tA[b, l, h + u, w + v] = tA[b, l, h + u, w + v] + \
                                     tI[b, c, h + r, w + s] * tW1[l, c, r, s]
                     with ctx.tile("L1", [h0, w0, l1, k1], "Temporal"):
                         with ctx.tile("L1", [l0, k0], "Spatial"):

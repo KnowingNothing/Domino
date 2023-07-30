@@ -265,21 +265,21 @@ def conv3x3_conv_nchw_dataflow_3levels(ctx, tI, tW1, tW2, batch, height, width, 
     k1, k0 = sub_k
 
     with ctx.sequential():
-        with ctx.tile("L3", [b, h4, w4], "Temporal"):
+        with ctx.tile("L3", [b, h4, w4, c1, l1], "Temporal"):
             with ctx.tile("L3", [h3, w3], "Spatial"):
                 with ctx.tile("L2", [h2, w2], "Temporal"):
                     with ctx.tile("L2", [h1, w1], "Spatial"):
-                        with ctx.tile("L1", [h0, w0, c1, l1], "Temporal"):
+                        with ctx.tile("L1", [h0, w0], "Temporal"):
                             with ctx.tile("L1", [c0, l0], "Spatial"):
                                 with ctx.tile("L0", [r, s], "Temporal"):
                                     tA[b, l, h, w] = tA[b, l, h, w] + \
                                         tI[b, c, h + r, w + s] * \
                                         tW1[l, c, r, s]
-        with ctx.tile("L3", [b, h4, w4], "Temporal"):
+        with ctx.tile("L3", [b, h4, w4, l1, k1], "Temporal"):
             with ctx.tile("L3", [h3, w3], "Spatial"):
                 with ctx.tile("L2", [h2, w2], "Temporal"):
                     with ctx.tile("L2", [h1, w1], "Spatial"):
-                        with ctx.tile("L1", [h0, w0, l1, k1], "Temporal"):
+                        with ctx.tile("L1", [h0, w0], "Temporal"):
                             with ctx.tile("L1", [l0, k0], "Spatial"):
                                 with ctx.tile("L0", [u, v], "Temporal"):
                                     tB[b, k, h, w] = tB[b, k, h, w] + \

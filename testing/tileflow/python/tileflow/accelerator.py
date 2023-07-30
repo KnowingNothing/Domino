@@ -52,7 +52,9 @@ def get_edge_large(L1_BW=500, L2_BW=25, L3_BW=None):
 def get_cloud_small(L1_BW=4000, L2_BW=800, L3_BW=160):
     MAC = acc.ALU(name="mac", alu_class="intmac",
                   datawidth=16, meshX=256*256, instance=256*256)
-    Reg = acc.Buffer(name="L0", instance=256*256, buffer_class="regfile", block_size=6, depth=1,
+    # Reg = acc.Buffer(name="L0", instance=256*256, buffer_class="regfile", block_size=6, depth=1,
+    #                  meshX=256*256, word_bits=16, technology="16nm", read_bandwidth=3, write_bandwidth=3)
+    Reg = acc.Buffer(name="L0", instance=256*256, buffer_class="regfile", block_size=60, depth=1,
                      meshX=256*256, word_bits=16, technology="16nm", read_bandwidth=3, write_bandwidth=3)
     PE = acc.Engine(name="PE")
     PE.add_local(Reg, MAC)

@@ -194,7 +194,7 @@ class Tensor(object):
         return TensorView(new_shape, self, new_keys)
 
     def __setitem__(self, keys, value):
-        new_shape, new_keys = self._parse_keys(keys, simple_indices=True)
+        new_shape, new_keys = self._parse_keys(keys, simple_indices=False)
         view = TensorView(new_shape, self, new_keys)
         if isinstance(value, TensorView):
             value = value.as_expr()

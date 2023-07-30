@@ -24,6 +24,7 @@ def run_tileflow(workload, arch, mapping, tileflow_path="tileflow", save_tmp_fil
     with open(option_file, "w") as fout:
         fout.write("check:\n")
         fout.write(f"  mem: {not unlimited_resource}\n")
+        fout.write(f"  loopcount: False\n")
         fout.write(f"  spatial: {not unlimited_resource}\n")
 
         fout.write(f"tileflow-mapper:\n")

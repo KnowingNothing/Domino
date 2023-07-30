@@ -17,7 +17,7 @@ def run(levels, hw_config, batch, num_heads, seq_len, hidden, trials, metric_typ
     return best_perf, best_config_key, best_config
 
 
-def replay(logfile, dataflow_name, hw_id, batch, num_heads, seq_len, hidden, metric_type, debug=False, resource_check=True, define_tiling_space=True):
+def replay(logfile, hw_id, batch, num_heads, seq_len, hidden, metric_type, debug=False, resource_check=True, define_tiling_space=True):
     hw = [(2, get_edge_small()), (3, get_cloud_small())]
     levels = hw[hw_id][0]
     hw_config = acc.tileflow_accelerator_generator(
@@ -34,13 +34,13 @@ def replay(logfile, dataflow_name, hw_id, batch, num_heads, seq_len, hidden, met
                 parts = line.split(',{')
                 if len(parts) == 4:
                     first_parts = parts[0].split(",")
-                    dataflow_, batch_, seq_len_, num_heads_, hidden_, metric_, seq_len__, hw_id_ = first_parts
+                    batch_, seq_len_, num_heads_, hidden_, metric_, seq_len__, hw_id_ = first_parts
                     second_parts = json.loads("{" + parts[1])
                     third_parts = json.loads(
                         ("{" + parts[2]).replace("'", '"'))
                     forth_parts = json.loads(
                         ("{" + parts[3]).replace("'", '"').replace("True", "1"))
-                    if int(hw_id_) == hw_id and dataflow_name == dataflow_ and batch == int(batch_) and seq_len == int(seq_len_) and num_heads == int(num_heads_) and hidden == int(hidden_) and metric_ == metric_type:
+                    if int(hw_id_) == hw_id and batch == int(batch_) and seq_len == int(seq_len_) and num_heads == int(num_heads_) and hidden == int(hidden_) and metric_ == metric_type:
                         perf, _, _ = inference(hw_config, dataflow, [], json.dumps(
                             second_parts), metric_type, resource_check=resource_check, debug=debug)
                         return perf
@@ -48,7 +48,7 @@ def replay(logfile, dataflow_name, hw_id, batch, num_heads, seq_len, hidden, met
     raise RuntimeError("No such log entry found.")
 
 
-def replay_config(config, dataflow_name, hw_id, batch, num_heads, seq_len, hidden, metric_type, debug=False, resource_check=True, define_tiling_space=True):
+def replay_config(config, hw_id, batch, num_heads, seq_len, hidden, metric_type, debug=False, resource_check=True, define_tiling_space=True):
     hw = [(2, get_edge_small()), (3, get_cloud_small())]
     levels = hw[hw_id][0]
     hw_config = acc.tileflow_accelerator_generator(
@@ -116,10 +116,10 @@ if __name__ == "__main__":
         seq_len = shape[1]
         hidden = shape[2]
         if args.config_key:
-            perf = replay_config(args.config_key.replace("'", '"'), args.dataflow, args.inference_hw, batch, num_heads, seq_len,
+            perf = replay_config(args.config_key.replace("'", '"'), args.inference_hw, batch, num_heads, seq_len,
                                  hidden, args.metric, args.debug, args.check_resource, args.define_tiling_space)
         else:
-            perf = replay(args.logfile, args.dataflow, args.inference_hw, batch, num_heads, seq_len,
+            perf = replay(args.logfile, args.inference_hw, batch, num_heads, seq_len,
                           hidden, args.metric, args.debug, args.check_resource, args.define_tiling_space)
         print(perf)
 

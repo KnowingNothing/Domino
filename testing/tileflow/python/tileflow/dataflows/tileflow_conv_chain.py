@@ -68,7 +68,7 @@ def conv_chain_dataflow(ctx, tI, tW1, tW2, batch, height, width, in_channel, out
     loop_v = [v, *sub_v]
 
     tA = Conv2d(ctx, tI, tW1, loop_b, loop_h, loop_w,
-                loop_c, loop_l, loop_r, loop_s, levels)
+                loop_c, loop_l, loop_r, loop_s, levels, loop_u=loop_u, loop_v=loop_v)
     tB = Conv2d(ctx, tA, tW2, loop_b, loop_h, loop_w,
                 loop_l, loop_k, loop_u, loop_v, levels)
 
@@ -145,7 +145,7 @@ def conv_chain_nchw_dataflow(ctx, tI, tW1, tW2, batch, height, width, in_channel
     loop_v = [v, *sub_v]
 
     tA = Conv2d_nchw(ctx, tI, tW1, loop_b, loop_h, loop_w,
-                     loop_c, loop_l, loop_r, loop_s, levels)
+                     loop_c, loop_l, loop_r, loop_s, levels, loop_u=loop_u, loop_v=loop_v)
     tB = Conv2d_nchw(ctx, tA, tW2, loop_b, loop_h, loop_w,
                      loop_l, loop_k, loop_u, loop_v, levels)
 

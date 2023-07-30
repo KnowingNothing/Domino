@@ -217,7 +217,6 @@ def self_attention_dataflow_3levels(ctx, tQ, tK, tV, batch, num_heads, seq_len, 
                                 with ctx.tile("L0", [n0, l0], "Temporal"):
                                     tG[b, h, m, n] = tG[b, h, m, n] + \
                                         tF[b, h, m, l] * tV[b, h, l, n]
-
     return [tG], [b, h, m, n, k, l]
 
 

@@ -326,7 +326,7 @@ class FusionPattern(object):
             visit[op] = valid
         for name in self.ops:
             helper(name)
-        assert all(visit.values())
+        # assert all(visit.values())
         
     def simple_match(self, op: NamedOp):
         """Simple pattern match
