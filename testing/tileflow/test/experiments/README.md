@@ -15,6 +15,7 @@ source set-env.sh
 cd testing/tileflow
 source set-env.sh
 ```
+4. Build TileFlow [C++ repo](https://github.com/pku-liang/TileFlow). Make sure the TileFlow root directory is under your home directory so that we can find `~/TileFlow/build/bin`.
 
 ### Self-attention dataflows
 - layerwise dataflow: `no_fuse_self_attention.py`
