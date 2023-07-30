@@ -1,5 +1,9 @@
 # Domino
 
+## Prerequisite
+1. Python >= 3.8
+2. CMake >= 3.12
+
 ## Download
 ```sh
 git clone git@github.com:KnowingNothing/Domino.git
@@ -34,13 +38,10 @@ python setup.py install --user
 ## Python part dependencies
 
 ```
-tflite
-onnx
-networkx
-pandas
+pip install -r requirements.txt
 ```
 
-others:
+others (deprecated):
 
 ```
 accelergy

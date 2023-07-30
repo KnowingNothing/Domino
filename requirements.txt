@@ -3,3 +3,5 @@ tflite
 onnx
 networkx
 pandas
+pebble
+tqdm
