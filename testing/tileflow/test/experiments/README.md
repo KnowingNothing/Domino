@@ -33,50 +33,50 @@ source set-env.sh
 - layerwise dataflow: `no_fuse_self_attention.py`
     *Usage:* 
     ```sh
-    python no_fuse_self_attention.py --trials 1000 --define_tiling_space --logfile no_fuse_self_attention.log
+    python no_fuse_self_attention.py --trials 10 --define_tiling_space
     ```
 
 - flat dataflow: `flat_dataflow.py`
     *Usage:* 
     ```sh
-    python flat_dataflow.py --trials 1000 --define_tiling_space --logfile flat_self_attention.log --dataflow rgran
+    python flat_dataflow.py --trials 10 --define_tiling_space --dataflow rgran
     ```
 
 - chimera dataflow: `chimera_self_attention.py`
     *Usage:* 
     ```sh
-    python chimera_self_attention.py --trials 1000 --define_tiling_space --logfile chimera_self_attention.log
+    python chimera_self_attention.py --trials 10 --define_tiling_space
     ```
 
 - tileflow dataflow: `tileflow_self_attention.py`
     *Usage:* 
     ```sh
-    python tileflow_self_attention.py --trials 1000 --define_tiling_space --logfile tileflow_self_attention.log
+    python tileflow_self_attention.py --trials 10 --define_tiling_space
     ```
 
 #### Conv-chain dataflows
 - layerwise dataflow: `no_fuse_conv_chain.py`
     *Usage:* 
     ```sh
-    python no_fuse_conv_chain.py --trials 1000 --define_tiling_space --logfile no_fuse_conv_chain.log --layout nhwc
+    python no_fuse_conv_chain.py --trials 10 --define_tiling_space --layout nhwc
     ```
 
 - fused-layer dataflow: `fused_layer_dataflow.py`
     *Usage:* 
     ```sh
-    python fused_layer_dataflow.py --trials 1000 --define_tiling_space --logfile fused_layer_conv_chain.log --layout nhwc
+    python fused_layer_dataflow.py --trials 10 --define_tiling_space --layout nhwc
     ```
 
 - isos dataflow: `isos_dataflow.py`
     *Usage:* 
     ```sh
-    python isos_conv_chain.py --trials 1000 --define_tiling_space --logfile isos_conv_chain.log --layout nhwc
+    python isos_conv_chain.py --trials 10 --define_tiling_space --layout nhwc
     ```
 
 - tileflow dataflow: `tileflow_conv.py`
     *Usage:* 
     ```sh
-    python tileflow_conv.py --trials 1000 --define_tiling_space --logfile tileflow_conv_chain.log --layout nhwc
+    python tileflow_conv.py --trials 10 --define_tiling_space --layout nhwc
     ```
 
 ### Notes
