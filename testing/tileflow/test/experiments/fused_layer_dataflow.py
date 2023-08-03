@@ -66,14 +66,14 @@ def replay_config(config, hw_id, batch, height, width, in_channel, out_channel_1
 
 shapes = [
     # (in_channel, height, width, out_channel_1, out_channel_2)
-    # (64, 112, 112, 192, 128),  # Yolo
-    # (32, 147, 147, 64, 80),  # Inception-V3
-    # (64, 56, 56, 128, 64),  # Darknet-19
-    # (128, 28, 28, 256, 128),  # Darknet-19
-    # (16, 227, 227, 64, 16),  # Squeezenet-V1.1
-    # (64, 56, 56, 64, 64),
-    # (64, 56, 56, 128, 128),
-    # (256, 56, 56, 256, 64)
+    (64, 112, 112, 192, 128),  # Yolo
+    (32, 147, 147, 64, 80),  # Inception-V3
+    (64, 56, 56, 128, 64),  # Darknet-19
+    (128, 28, 28, 256, 128),  # Darknet-19
+    (16, 227, 227, 64, 16),  # Squeezenet-V1.1
+    (64, 56, 56, 64, 64),
+    (64, 56, 56, 128, 128),
+    (256, 56, 56, 256, 64)
     (512, 7, 7, 1024, 1024)
 ]
 

@@ -10,14 +10,26 @@ The different files are used for different dataflows.
 ```sh
 source set-env.sh
 ``` 
-3. Change directory to TileFlow Python Interface and setup the environment. Note that it is important to setup the environment in `tileflow`` directory.
+
+3. Build TileFlow [C++ repo](https://github.com/pku-liang/TileFlow). Make sure `tileflow`'s binary is under your system path.
+
+4. Change directory to TileFlow Python Interface and setup the environment. Note that it is important to setup the environment in `tileflow`` directory.
 ```sh
 cd testing/tileflow
 source set-env.sh
 ```
-4. Build TileFlow [C++ repo](https://github.com/pku-liang/TileFlow). Make sure the TileFlow root directory is under your home directory so that we can find `~/TileFlow/build/bin`.
 
-### Self-attention dataflows
+### Reproducing Experiments
+- Experiment on self_attention block/CNN Network
+    - Description: this folder contains the source code to run the experiments described in Figure 9 and Figure 10, which compares different dataflow designs on different hardware platforms using for the self-attention and CNN workloads. Every dataflow used in experiment is tuned by TileFlow's searching algorithm.
+    - Running:
+        ```sh
+        python script.py
+        ```
+    - Sample outputs are included in `sample_output`, corresponding to experiments in Fig.9 and Fig.10.
+    - This experiment takes about an hour on a CPU with 112 cores. 
+
+#### Self-attention dataflows
 - layerwise dataflow: `no_fuse_self_attention.py`
     *Usage:* 
     ```sh
@@ -42,7 +54,7 @@ source set-env.sh
     python tileflow_self_attention.py --trials 1000 --define_tiling_space --logfile tileflow_self_attention.log
     ```
 
-### Conv-chain dataflows
+#### Conv-chain dataflows
 - layerwise dataflow: `no_fuse_conv_chain.py`
     *Usage:* 
     ```sh
@@ -61,7 +73,7 @@ source set-env.sh
     python isos_conv_chain.py --trials 1000 --define_tiling_space --logfile isos_conv_chain.log --layout nhwc
     ```
 
-- tileflow dataflow: `tileflow_convpy`
+- tileflow dataflow: `tileflow_conv.py`
     *Usage:* 
     ```sh
     python tileflow_conv.py --trials 1000 --define_tiling_space --logfile tileflow_conv_chain.log --layout nhwc
