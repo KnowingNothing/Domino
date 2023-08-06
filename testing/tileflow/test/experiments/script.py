@@ -6,16 +6,14 @@ import pandas as pd
 
 __METRICS__ = ["Cycle", "Energy", "MEM::L1", "MEM::L2", "MEM::L0"]
 
-def kernel(wkl, args):
-    name, script, dataflow, layout = args
-    number = 5 if wkl == 'conv' else 9
+def kernel(wkl, args, params):
+    name, script, dataflow = args
+    number = 9 if wkl == 'self_attention' else 5
     logfile = f'logs/{wkl}/{name}.log'
     cmd = f'python {script} --number {number}  --trials 1000 --define_tiling_space > {logfile}'
     if dataflow is not None:
         cmd += f' --dataflow {dataflow}'
-    if layout is not None:
-        cmd += f' --layout {layout}'
-    print (cmd)
+    cmd += ' ' + params
     
     if not os.path.exists(logfile):
         err = os.system(cmd)
@@ -29,7 +27,7 @@ def kernel(wkl, args):
             err = os.system(cmd)
             if err: return 
 
-def run(wkl, dataflows, shapes):
+def run(wkl, dataflows, shapes, params):
     os.system(f'mkdir -p logs/{wkl}')
     os.system(f'mkdir -p outs/{wkl}')
     os.system(f'mkdir -p pics/{wkl}')
@@ -38,9 +36,9 @@ def run(wkl, dataflows, shapes):
         procs = []
         
         for args in dataflows:
-            name, _, _, _ = args
+            name, _, _ = args
             # if not os.path.exists(f'logs/{name}.log'):
-            proc = multiprocessing.Process(target = kernel, args = (wkl, args,))
+            proc = multiprocessing.Process(target = kernel, args = (wkl, args, params))
             proc.start()
             procs.append(proc)
                 
@@ -48,7 +46,7 @@ def run(wkl, dataflows, shapes):
         
         values = []
         keys = []
-        for name, _, _, _ in dataflows:
+        for name, _, _ in dataflows:
             for hw_id in [0,1]:
                 for metric in __METRICS__:
                     if not os.path.exists(f'outs/{wkl}/{name}-{hw_id}-{metric}.csv'):
@@ -77,14 +75,14 @@ def run(wkl, dataflows, shapes):
             ax.get_figure().savefig(f'pics/{wkl}/' + hw_name + f'-{metric}' + '.png', bbox_inches = 'tight')
 
 
-params = {
+_params = {
     'self_attention': {
         'dataflows': [
-        ('Naive', 'no_fuse_self_attention.py', None, None),
-        ('FLAT-HGran', 'flat_dataflow.py', 'hgran', None),
-        ('FLAT-RGran', 'flat_dataflow.py', 'rgran', None),
-        ('Chimera', 'chimera_self_attention.py', None, None),
-        ('TileFlow', 'tileflow_self_attention.py', None, None)
+        ('Naive', 'no_fuse_self_attention.py', None),
+        ('FLAT-HGran', 'flat_dataflow.py', 'hgran'),
+        ('FLAT-RGran', 'flat_dataflow.py', 'rgran'),
+        ('Chimera', 'chimera_self_attention.py', None),
+        ('TileFlow', 'tileflow_self_attention.py', None)
     ],  
         'shapes': {
         # (num_heads, seq_len, hidden)
@@ -97,9 +95,29 @@ params = {
         (12, 196, 768): 'ViT-Base/16',
         (16, 196, 1024): 'ViT-Large/16',
         (16, 196, 1280): 'ViT-Huge/16'
-        }
+        },
+        'params': ''
     },
-    'conv': {
+    
+    'conv1x1': {
+        'dataflows': [
+            ('Naive', 'no_fuse_conv_chain.py', None),
+            ('Fused-Layer', 'fused_layer_dataflow.py', None),
+            ('ISOS', 'isos_dataflow.py', None),
+            ('TileFlow', 'tileflow_conv.py', None)
+        ],
+        'shapes': {
+            # (in_channel, height, width, out_channel_1, out_channel_2)
+            (64, 112, 112, 192, 128): 'Yolo',
+            (32, 147, 147, 64, 80): 'Inception-V3',
+            (64, 56, 56, 128, 64): 'Darknet-19-0',
+            (128, 28, 28, 256, 128): 'Darknet-19-1',
+            (16, 227, 227, 64, 16): 'Squeezenet-V1.1'
+        },
+        'params': '--layout nhwc',
+    },
+    
+    'conv3x3': {
         'dataflows': [
             ('Naive', 'no_fuse_conv_chain.py', None, 'nhwc'),
             ('Fused-Layer', 'fused_layer_dataflow.py', None, 'nhwc'),
@@ -113,7 +131,8 @@ params = {
             (64, 56, 56, 128, 64): 'Darknet-19-0',
             (128, 28, 28, 256, 128): 'Darknet-19-1',
             (16, 227, 227, 64, 16): 'Squeezenet-V1.1'
-        }
+        },
+        'params': '--layout nhwc --second_kernel_size 3',
     }
 }
 
@@ -122,11 +141,12 @@ def main(workload):
     os.system('mkdir -p outs')
     os.system('mkdir -p pics')
     os.system('mkdir -p csvs')
-    run(workload, params[workload]['dataflows'], params[workload]['shapes'])
+    run(workload, _params[workload]['dataflows'], _params[workload]['shapes'], _params[workload]['params'])
 
 if __name__ == '__main__':
     # parser = argparse.ArgumentParser()
     # parser.add_argument('--wkl', type = str, choices = ['self_attention', 'conv'], default = 'self_attention')  
     # args = parser.parse_args()
     main('self_attention')
-    main('conv')
+    main('conv1x1')
+    main('conv3x3')
