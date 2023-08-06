@@ -22,7 +22,7 @@ $ ctest
 ## Setup environment
 The environment for Python3
 ```sh
-source setup-env.sh
+source set-env.sh
 ```
 or
 ```sh
@@ -56,3 +56,7 @@ maestro
 ```
 
 we prepare download script in `download_utils`
+
+## Run dataflow comparison experiment
+
+The experiment folder is `testing/tileflow/test/experiments`, please check the `readme` file under the folder to reproduce the experiment.

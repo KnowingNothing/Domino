@@ -1,4 +1,3 @@
-export TILEFLOW_PATH=~/TileFlow/build/bin
-export PATH=$TILEFLOW_PATH:$PATH
+export TILEFLOW_BIN_PATH=$(which tileflow)
 export TILEFLOW_PYTHONPATH=$(pwd)/python
 export PYTHONPATH=$TILEFLOW_PYTHONPATH:$PYTHONPATH
