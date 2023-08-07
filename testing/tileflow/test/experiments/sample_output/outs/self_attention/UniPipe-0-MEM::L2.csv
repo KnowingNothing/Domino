@@ -1,0 +1,10 @@
+batch,seq_len,num_heads,hidden,metric,hw_id,MEM::L2
+1,512,8,512,1e9/latency,0,1.28e-06
+1,512,12,768,1e9/latency,0,1.92e-06
+1,512,16,1024,1e9/latency,0,2.56e-06
+1,256,12,768,1e9/latency,0,9.6e-07
+1,256,16,1024,1e9/latency,0,1.28e-06
+1,256,16,1280,1e9/latency,0,1.6e-06
+1,196,12,768,1e9/latency,0,7.35e-07
+1,196,16,1024,1e9/latency,0,9.8e-07
+1,196,16,1280,1e9/latency,0,1.225e-06

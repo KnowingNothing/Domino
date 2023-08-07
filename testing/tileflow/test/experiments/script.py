@@ -50,7 +50,7 @@ def run(wkl, dataflows, shapes, params):
         for name, _, _ in dataflows:
             for hw_id in [0,1]:
                 for metric in __METRICS__:
-                    if _run_all or not os.path.exists(f'outs/{wkl}/{name}-{hw_id}-{metric}.csv'):
+                    if not os.path.exists(f'outs/{wkl}/{name}-{hw_id}-{metric}.csv'):
                         print (f'[ERROR] running {name} {hw_id} {metric}', file=sys.stderr)
                         continue
                     values.append(pd.read_csv(f'outs/{wkl}/{name}-{hw_id}-{metric}.csv'))

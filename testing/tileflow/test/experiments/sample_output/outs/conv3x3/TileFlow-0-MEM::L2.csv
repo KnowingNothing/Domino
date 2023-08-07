@@ -1,0 +1,6 @@
+batch,height,width,in_channel,out_channel_1,out_channel_2,metric,hw_id,MEM::L2
+1,112,112,64,192,128,1e9/latency,0,3.3982e-06
+1,147,147,32,64,80,1e9/latency,0,3.06791e-06
+1,56,56,64,128,64,1e9/latency,0,6.96953e-07
+1,28,28,128,256,128,1e9/latency,0,9.92656e-07
+1,227,227,16,64,16,1e9/latency,0,2.06213e-06

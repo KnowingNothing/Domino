@@ -1,0 +1,6 @@
+batch,height,width,in_channel,out_channel_1,out_channel_2,metric,hw_id,Energy
+1,112,112,64,192,128,1e9/latency,0,67306400000.0
+1,147,147,32,64,80,1e9/latency,0,15107400000.0
+1,56,56,64,128,64,1e9/latency,0,4759110000.0
+1,28,28,128,256,128,1e9/latency,0,4494660000.0
+1,227,227,16,64,16,1e9/latency,0,10697900000.0
