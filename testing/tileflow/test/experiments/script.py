@@ -6,6 +6,8 @@ import pandas as pd
 
 __METRICS__ = ["Cycle", "Energy", "MEM::L1", "MEM::L2", "MEM::L0"]
 
+_run_all = False
+
 def kernel(wkl, args, params):
     name, script, dataflow = args
     number = 9 if wkl == 'self_attention' else 5
@@ -15,7 +17,7 @@ def kernel(wkl, args, params):
         cmd += f' --dataflow {dataflow}'
     cmd += ' ' + params
     
-    if not os.path.exists(logfile):
+    if _run_all or not os.path.exists(logfile):
         err = os.system(cmd)
         if err: return 
     
@@ -23,7 +25,6 @@ def kernel(wkl, args, params):
         for metric in __METRICS__:
             output_file = f'outs/{wkl}/{name}-{hw_id}-{metric}.csv'
             cmd = f'python metric_analysis.py --wkl {wkl} --file {logfile} --hw_id {hw_id} --metric {metric} > {output_file}'
-            print(cmd)
             err = os.system(cmd)
             if err: return 
 
@@ -32,15 +33,15 @@ def run(wkl, dataflows, shapes, params):
     os.system(f'mkdir -p outs/{wkl}')
     os.system(f'mkdir -p pics/{wkl}')
     
-    if not os.path.exists(f'csvs/{wkl}.csv'):
+    if _run_all or not os.path.exists(f'csvs/{wkl}.csv'):
         procs = []
         
         for args in dataflows:
             name, _, _ = args
-            # if not os.path.exists(f'logs/{name}.log'):
-            proc = multiprocessing.Process(target = kernel, args = (wkl, args, params))
-            proc.start()
-            procs.append(proc)
+            if _run_all or not os.path.exists(f'logs/{wkl}/{name}.log'):
+                proc = multiprocessing.Process(target = kernel, args = (wkl, args, params))
+                proc.start()
+                procs.append(proc)
                 
         for proc in procs: proc.join()
         
@@ -49,17 +50,18 @@ def run(wkl, dataflows, shapes, params):
         for name, _, _ in dataflows:
             for hw_id in [0,1]:
                 for metric in __METRICS__:
-                    if not os.path.exists(f'outs/{wkl}/{name}-{hw_id}-{metric}.csv'):
+                    if _run_all or not os.path.exists(f'outs/{wkl}/{name}-{hw_id}-{metric}.csv'):
                         print (f'[ERROR] running {name} {hw_id} {metric}', file=sys.stderr)
                         continue
                     values.append(pd.read_csv(f'outs/{wkl}/{name}-{hw_id}-{metric}.csv'))
                     keys.append((name, hw_id, metric))
+        print (keys)
         df = pd.concat(values, keys = keys, names = ['Dataflow', 'Architecture', 'metric'], sort=False)
         if wkl == 'self_attention':
             df['Shape'] = df.apply(lambda row: shapes[(row['num_heads'],row['seq_len'],row['hidden'])], axis = 1)
         else: 
             df['Shape'] = df.apply(lambda row: shapes[(row['in_channel'],row['height'],row['width'],row['out_channel_1'],row['out_channel_2'])], axis = 1)
-        df.to_csv(f'{wkl}.csv')
+        df.to_csv(f'csvs/{wkl}.csv')
     
     df = pd.read_csv(f'csvs/{wkl}.csv')
     
@@ -68,10 +70,9 @@ def run(wkl, dataflows, shapes, params):
             ddff = df[df['Architecture'] == hw_id]
             ddff = ddff[ddff['metric'] == metric][['Dataflow', metric, 'Shape']]
             ddff = ddff.set_index(['Shape', 'Dataflow'])[metric].unstack()
-            print (ddff)
+            # print (ddff)
             ax = ddff.plot.bar(rot = 45)
             ax.set_title(f'{wkl}-{hw_name}-{metric}')
-            ddff.to_csv(f'{wkl}-{hw_name}-{metric}.csv')
             ax.get_figure().savefig(f'pics/{wkl}/' + hw_name + f'-{metric}' + '.png', bbox_inches = 'tight')
 
 
@@ -79,6 +80,7 @@ _params = {
     'self_attention': {
         'dataflows': [
         ('Naive', 'no_fuse_self_attention.py', None),
+        ('UniPipe', 'flat_dataflow.py', 'bgran'),
         ('FLAT-HGran', 'flat_dataflow.py', 'hgran'),
         ('FLAT-RGran', 'flat_dataflow.py', 'rgran'),
         ('Chimera', 'chimera_self_attention.py', None),
@@ -119,10 +121,10 @@ _params = {
     
     'conv3x3': {
         'dataflows': [
-            ('Naive', 'no_fuse_conv_chain.py', None, 'nhwc'),
-            ('Fused-Layer', 'fused_layer_dataflow.py', None, 'nhwc'),
-            ('ISOS', 'isos_dataflow.py', None, 'nhwc'),
-            ('TileFlow', 'tileflow_conv.py', None, 'nhwc')
+            ('Naive', 'no_fuse_conv_chain.py', None),
+            ('Fused-Layer', 'fused_layer_dataflow.py', None),
+            ('ISOS', 'isos_dataflow.py', None),
+            ('TileFlow', 'tileflow_conv.py', None)
         ],
         'shapes': {
             # (in_channel, height, width, out_channel_1, out_channel_2)
@@ -144,9 +146,20 @@ def main(workload):
     run(workload, _params[workload]['dataflows'], _params[workload]['shapes'], _params[workload]['params'])
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('--wkl', type = str, choices = ['self_attention', 'conv'], default = 'self_attention')  
-    # args = parser.parse_args()
-    main('self_attention')
-    main('conv1x1')
-    main('conv3x3')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--wkl', type = str, choices = ['self_attention', 'conv1x1', 'conv3x3'], 
+                        nargs='+', default = ['self_attention', 'conv1x1', 'conv3x3'], 
+                        )  
+    parser.add_argument('--all', action = 'store_true')
+    args = parser.parse_args()
+    _run_all = args.all
+    if os.environ.get('TILEFLOW_BIN_PATH') is None:
+        print ('[ERROR]: TILEFLOW_BIN_PATH not set. Did you run set-env.sh in ../..?', file = sys.stderr)
+        raise RuntimeError
+    procs = []
+    for wkl in args.wkl:
+        proc = multiprocessing.Process(target = main, args = (wkl,))
+        proc.start()
+        procs.append(proc)
+    for proc in procs:
+        proc.join()

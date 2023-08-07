@@ -24,10 +24,10 @@ source set-env.sh
     - Description: this folder contains the source code to run the experiments described in Figure 9 and Figure 10, which compares different dataflow designs on different hardware platforms using for the self-attention and CNN workloads. Every dataflow used in experiment is tuned by TileFlow's searching algorithm.
     - Running:
         ```sh
-        python script.py
+        python script.py --all
         ```
     - Sample outputs are included in `sample_output`, corresponding to experiments in Fig.9 and Fig.10.
-    - This experiment takes about an hour on a CPU with 112 cores. 
+    - This experiment takes about 3 hours on a CPU with 112 cores. 
 
 #### Self-attention dataflows
 - layerwise dataflow: `no_fuse_self_attention.py`
