@@ -19,3 +19,9 @@ setup(
     name="mculib",
     packages=find_packages(),
 )
+
+os.chdir("../../tileflow/python")
+setup(
+    name="tileflow",
+    packages=find_packages(),
+)

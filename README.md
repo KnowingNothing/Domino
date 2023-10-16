@@ -10,38 +10,37 @@ git clone git@github.com:KnowingNothing/Domino.git
 git submodule update --init --recursive
 ```
 
-## Build & Test
-
+## Build & Test C++ library
+Build up dominoc
 ```shell
 $ mkdir build && cd build
 $ cmake ..
 $ make
 $ ctest
 ```
+## Install python dependencies
+```
+python3 -m pip install -r requirements.txt
+```
 
-## Setup environment
-The environment for Python3
+## Setup python environment
+
+Setup python environment for domino, dominoc, mculib (`testing/mculib`), tileflow (`testing/tileflow`).
+```sh
+# recommended
+cd python
+python3 setup.py develop
+```
+or
+```sh
+cd python
+python3 setup.py install --user
+```
+or
 ```sh
 source set-env.sh
 ```
-or
-```sh
-cd python
-python setup.py develop --no-deps
-```
-or
-```sh
-cd python
-python setup.py install --user
-```
-
-## Python part dependencies
-
-```
-pip install -r requirements.txt
-```
-
-others (deprecated):
+## Other dependencies (deprecated)
 
 ```
 accelergy
