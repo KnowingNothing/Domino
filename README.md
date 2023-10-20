@@ -7,6 +7,7 @@
 ## Download
 ```sh
 git clone git@github.com:KnowingNothing/Domino.git
+cd Domino
 git submodule update --init --recursive
 ```
 
@@ -19,7 +20,7 @@ $ make
 $ ctest
 ```
 ## Install python dependencies
-```
+```sh
 python3 -m pip install -r requirements.txt
 ```
 

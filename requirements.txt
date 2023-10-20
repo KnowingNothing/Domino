@@ -5,3 +5,5 @@ networkx
 pandas
 pebble
 tqdm
+scikit-learn
+seaborn

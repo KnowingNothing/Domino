@@ -10,3 +10,6 @@
 [submodule "3rdparty/H2H"]
 	path = 3rdparty/H2H
 	url = git@github.com:xyzxinyizhang/H2H.git
+[submodule "3rdparty/TileFlow"]
+	path = 3rdparty/TileFlow
+	url = git@github.com:pku-liang/TileFlow.git
